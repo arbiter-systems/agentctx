@@ -14,7 +14,28 @@ export type FindingCode =
   | "risky-validation-command"
   | "unbounded-command"
   | "restore-heavy-command"
-  | "full-repo-format-command";
+  | "full-repo-format-command"
+  | "conflicting-branch-target"
+  | "conflicting-pr-target"
+  | "conflicting-validation-guidance"
+  | "conflicting-format-guidance"
+  | "conflicting-delegation-guidance"
+  | "conflicting-destructive-action-guidance";
+
+export type ConflictSignal = {
+  kind:
+    | "branch-target"
+    | "pr-target"
+    | "validation-scope"
+    | "format-scope"
+    | "delegation-mode"
+    | "destructive-change-mode";
+  value: string;
+  sourcePath: string;
+  lineStart: number;
+  lineEnd: number;
+  matchedText: string;
+};
 
 export type Finding = {
   code: FindingCode;
@@ -488,12 +509,306 @@ function riskyCommandFindings(
   return findings;
 }
 
+type SignalRule = {
+  kind: ConflictSignal["kind"];
+  value: string;
+  pattern: RegExp;
+};
+
+const conflictLanguageRules: SignalRule[] = [
+  {
+    kind: "branch-target",
+    value: "dev",
+    pattern: /\bbranch(?:es|ing)?\s+(?:from|off|against)\s+`?dev`?\b/i,
+  },
+  {
+    kind: "branch-target",
+    value: "main",
+    pattern: /\bbranch(?:es|ing)?\s+(?:from|off|against)\s+`?main`?\b/i,
+  },
+  {
+    kind: "pr-target",
+    value: "dev",
+    pattern: /\b(?:pr|pull request)s?\s+(?:to|target|against|into)\s+`?dev`?\b/i,
+  },
+  {
+    kind: "pr-target",
+    value: "main",
+    pattern: /\b(?:pr|pull request)s?\s+(?:to|target|against|into)\s+`?main`?\b/i,
+  },
+  {
+    kind: "validation-scope",
+    value: "full",
+    pattern:
+      /\b(?:run\s+all\s+tests|run\s+the\s+full\s+test\s+suite|full\s+validation|run\s+all\s+checks)\b/i,
+  },
+  {
+    kind: "validation-scope",
+    value: "bounded",
+    pattern: /\b(?:focused|bounded|scoped)\s+(?:tests|validation|checks)\b/i,
+  },
+  {
+    kind: "validation-scope",
+    value: "bounded",
+    pattern: /\b(?:tests|validation|checks)\b.{0,48}\bchanged files only\b/i,
+  },
+  {
+    kind: "format-scope",
+    value: "full",
+    pattern:
+      /\b(?:full\s+repo\s+format|full\s+format|format\s+(?:the\s+)?(?:entire|whole)\s+repo)\b/i,
+  },
+  {
+    kind: "format-scope",
+    value: "bounded",
+    pattern: /\bformat\b.{0,48}\bchanged files only\b/i,
+  },
+  {
+    kind: "delegation-mode",
+    value: "delegate",
+    pattern: /\b(?:use|spawn)\s+subagents\b/i,
+  },
+  {
+    kind: "delegation-mode",
+    value: "delegate",
+    pattern: /\bdelegate\s+to\s+subagents\b/i,
+  },
+  {
+    kind: "delegation-mode",
+    value: "main-session-only",
+    pattern:
+      /\b(?:main session only|do not use subagents|don't use subagents|no subagents|without subagents)\b/i,
+  },
+  {
+    kind: "destructive-change-mode",
+    value: "auto-fix",
+    pattern: /\b(?:auto-?fix|fix all issues automatically|apply fixes without asking)\b/i,
+  },
+  {
+    kind: "destructive-change-mode",
+    value: "ask-before-change",
+    pattern: /\bask before (?:destructive )?(?:changes|actions|edits|changing)\b/i,
+  },
+  {
+    kind: "destructive-change-mode",
+    value: "ask-before-change",
+    pattern: /\bdo not (?:modify|delete|change) without asking\b/i,
+  },
+];
+
+function commandConflictSignalFor(command: string): Pick<ConflictSignal, "kind" | "value" | "matchedText"> | null {
+  if (/^dotnet\s+format\b/i.test(command)) {
+    return {
+      kind: "format-scope",
+      value: /\s--include(?:=|\s+\S+)/i.test(command) ? "bounded" : "full",
+      matchedText: command,
+    };
+  }
+
+  if (/^dotnet\s+test\b/i.test(command)) {
+    const hasProjectPath = /^dotnet\s+test\s+\S+/i.test(command) &&
+      !/^dotnet\s+test\s+--/i.test(command);
+    return {
+      kind: "validation-scope",
+      value: hasProjectPath ? "bounded" : "full",
+      matchedText: command,
+    };
+  }
+
+  if (/^(?:npm|pnpm|yarn)\s+test(?:\s|$)/i.test(command)) {
+    return {
+      kind: "validation-scope",
+      value: /^npm\s+test\s+--\s+\S+/i.test(command) ||
+        /^pnpm\s+test\s+--filter\s+\S+/i.test(command) ||
+        /^yarn\s+test\s+\S+/i.test(command)
+        ? "bounded"
+        : "full",
+      matchedText: command,
+    };
+  }
+
+  return null;
+}
+
+export function extractConflictSignals(input: {
+  sections: InstructionSection[];
+  commands: CommandRecord[];
+}): ConflictSignal[] {
+  const signals: ConflictSignal[] = [];
+  const fencedCommands = input.commands.filter((command) => command.kind === "fenced");
+
+  for (const section of input.sections) {
+    const lines = section.text.split("\n");
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index] ?? "";
+      const lineNumber = section.lineStart + index;
+      if (
+        fencedCommands.some(
+          (command) =>
+            command.sourcePath === section.sourcePath &&
+            lineNumber >= command.lineStart &&
+            lineNumber <= command.lineEnd,
+        )
+      ) {
+        continue;
+      }
+
+      for (const rule of conflictLanguageRules) {
+        const match = rule.pattern.exec(line);
+        if (!match?.[0]) continue;
+        signals.push({
+          kind: rule.kind,
+          value: rule.value,
+          sourcePath: section.sourcePath,
+          lineStart: lineNumber,
+          lineEnd: lineNumber,
+          matchedText: match[0],
+        });
+      }
+    }
+  }
+
+  for (const commandRecord of input.commands) {
+    const lines = commandRecord.commandText.split("\n");
+    for (let index = 0; index < lines.length; index++) {
+      const command = normalizeCommandLine(lines[index] ?? "");
+      if (!command) continue;
+
+      const commandSignal = commandConflictSignalFor(command);
+      if (!commandSignal) continue;
+
+      const lineNumber =
+        commandRecord.kind === "fenced"
+          ? commandRecord.lineStart + index + 1
+          : commandRecord.lineStart;
+      signals.push({
+        ...commandSignal,
+        sourcePath: commandRecord.sourcePath,
+        lineStart: lineNumber,
+        lineEnd: lineNumber,
+      });
+    }
+  }
+
+  return signals;
+}
+
+type ConflictRule = {
+  kind: ConflictSignal["kind"];
+  values: readonly [string, string];
+  code: Extract<
+    FindingCode,
+    | "conflicting-branch-target"
+    | "conflicting-pr-target"
+    | "conflicting-validation-guidance"
+    | "conflicting-format-guidance"
+    | "conflicting-delegation-guidance"
+    | "conflicting-destructive-action-guidance"
+  >;
+  severity: FindingSeverity;
+  message: string;
+  hint: string;
+};
+
+const conflictRules: ConflictRule[] = [
+  {
+    kind: "branch-target",
+    values: ["dev", "main"],
+    code: "conflicting-branch-target",
+    severity: "medium",
+    message: "Instruction files contain conflicting branch target guidance.",
+    hint: "Keep one explicit branch target for this repository.",
+  },
+  {
+    kind: "pr-target",
+    values: ["dev", "main"],
+    code: "conflicting-pr-target",
+    severity: "medium",
+    message: "Instruction files contain conflicting pull request target guidance.",
+    hint: "Keep one explicit PR target branch for this repository.",
+  },
+  {
+    kind: "validation-scope",
+    values: ["full", "bounded"],
+    code: "conflicting-validation-guidance",
+    severity: "medium",
+    message: "Instruction files mix full and bounded validation guidance.",
+    hint: "Choose one validation scope and make exceptions explicit.",
+  },
+  {
+    kind: "format-scope",
+    values: ["full", "bounded"],
+    code: "conflicting-format-guidance",
+    severity: "medium",
+    message: "Instruction files mix full-repo and changed-file formatting guidance.",
+    hint: "Prefer one formatting scope and keep command examples aligned.",
+  },
+  {
+    kind: "delegation-mode",
+    values: ["delegate", "main-session-only"],
+    code: "conflicting-delegation-guidance",
+    severity: "medium",
+    message: "Instruction files conflict on whether to delegate work to subagents.",
+    hint: "Keep delegation guidance in one explicit mode.",
+  },
+  {
+    kind: "destructive-change-mode",
+    values: ["auto-fix", "ask-before-change"],
+    code: "conflicting-destructive-action-guidance",
+    severity: "high",
+    message: "Instruction files conflict on destructive or automatic change guidance.",
+    hint: "Require explicit approval before destructive or automatic changes.",
+  },
+];
+
+function firstSignal(
+  signals: ConflictSignal[],
+  kind: ConflictSignal["kind"],
+  value: string,
+): ConflictSignal | undefined {
+  return signals.find((signal) => signal.kind === kind && signal.value === value);
+}
+
+function conflictFindings(signals: ConflictSignal[]): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const rule of conflictRules) {
+    const first = firstSignal(signals, rule.kind, rule.values[0]);
+    const second = firstSignal(signals, rule.kind, rule.values[1]);
+    if (!first || !second || first.sourcePath === second.sourcePath) continue;
+
+    findings.push({
+      code: rule.code,
+      severity: rule.severity,
+      message: rule.message,
+      sourcePath: first.sourcePath,
+      lineStart: first.lineStart,
+      lineEnd: first.lineEnd,
+      matchedText: first.matchedText,
+      relatedSources: [
+        {
+          sourcePath: second.sourcePath,
+          lineStart: second.lineStart,
+          lineEnd: second.lineEnd,
+        },
+      ],
+      hint: rule.hint,
+    });
+  }
+
+  return findings;
+}
+
 export function detectFindings(input: {
   sources: AnalyzedInstructionSource[];
   sections: InstructionSection[];
   commands: CommandRecord[];
 }): Finding[] {
   const fencedCommands = input.commands.filter((command) => command.kind === "fenced");
+  const signals = extractConflictSignals({
+    sections: input.sections,
+    commands: input.commands,
+  });
   const guidanceValues = input.sections.flatMap((section) =>
     guidanceLinesFromSection(section, fencedCommands),
   );
@@ -523,6 +838,7 @@ export function detectFindings(input: {
   }
 
   return [
+    ...conflictFindings(signals),
     ...riskyValidationLanguageFindings(input.sections, fencedCommands),
     ...riskyCommandFindings(input.commands, input.sections),
     ...duplicateFindings(
