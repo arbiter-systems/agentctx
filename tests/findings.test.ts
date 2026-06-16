@@ -169,81 +169,68 @@ describe("doctor findings", () => {
 
   it("detects risky validation language and unbounded commands", async () => {
     const report = await buildDoctorReport(path.join(fixturesRoot, "risky-validation"));
-    const findingsByCode = new Map(
-      report.findings.map((finding) => [
-        `${finding.code}:${finding.matchedText ?? ""}`,
-        finding,
-      ]),
-    );
+    const findAt = (code: string, lineStart: number) =>
+      report.findings.find((f) => f.code === code && f.lineStart === lineStart);
 
-    expect(findingsByCode.get("risky-validation-command:clean validation")).toMatchObject({
+    expect(findAt("risky-validation-command", 3)).toMatchObject({
       code: "risky-validation-command",
       severity: "high",
       sourcePath: "AGENTS.md",
-      lineStart: 3,
       matchedText: "clean validation",
       hint: expect.any(String),
     });
-    expect(findingsByCode.get("risky-validation-command:entire repo")).toMatchObject({
+    expect(findAt("risky-validation-command", 4)).toMatchObject({
       code: "risky-validation-command",
       severity: "high",
-      lineStart: 4,
     });
-    expect(
-      report.findings.find(
-        (finding) =>
-          finding.code === "risky-validation-command" &&
-          finding.matchedText === "Run all checks",
-      ),
-    ).toMatchObject({
+    expect(findAt("risky-validation-command", 5)).toMatchObject({
       severity: "low",
-      lineStart: 5,
+      matchedText: "Run all checks",
     });
-    expect(findingsByCode.get("full-repo-format-command:dotnet format")).toMatchObject({
+    expect(findAt("full-repo-format-command", 6)).toMatchObject({
       code: "full-repo-format-command",
       severity: "high",
-      lineStart: 6,
       message: expect.any(String),
     });
-    expect(findingsByCode.get("unbounded-command:dotnet test")).toMatchObject({
+    expect(findAt("unbounded-command", 8)).toMatchObject({
       code: "unbounded-command",
       severity: "medium",
-      lineStart: 8,
+      matchedText: "dotnet test",
     });
-    expect(findingsByCode.get("unbounded-command:npm test")).toMatchObject({
+    expect(findAt("unbounded-command", 10)).toMatchObject({
       code: "unbounded-command",
       severity: "medium",
-      lineStart: 10,
+      matchedText: "npm test",
     });
-    expect(findingsByCode.get("unbounded-command:pnpm test")).toMatchObject({
+    expect(findAt("unbounded-command", 12)).toMatchObject({
       code: "unbounded-command",
       severity: "medium",
-      lineStart: 12,
+      matchedText: "pnpm test",
     });
-    expect(findingsByCode.get("unbounded-command:yarn test")).toMatchObject({
+    expect(findAt("unbounded-command", 14)).toMatchObject({
       code: "unbounded-command",
       severity: "medium",
-      lineStart: 14,
+      matchedText: "yarn test",
     });
-    expect(findingsByCode.get("restore-heavy-command:dotnet restore")).toMatchObject({
+    expect(findAt("restore-heavy-command", 16)).toMatchObject({
       code: "restore-heavy-command",
       severity: "medium",
-      lineStart: 16,
+      matchedText: "dotnet restore",
     });
-    expect(findingsByCode.get("restore-heavy-command:npm install")).toMatchObject({
+    expect(findAt("restore-heavy-command", 17)).toMatchObject({
       code: "restore-heavy-command",
       severity: "medium",
-      lineStart: 17,
+      matchedText: "npm install",
     });
-    expect(findingsByCode.get("restore-heavy-command:pnpm install")).toMatchObject({
+    expect(findAt("restore-heavy-command", 18)).toMatchObject({
       code: "restore-heavy-command",
       severity: "medium",
-      lineStart: 18,
+      matchedText: "pnpm install",
     });
-    expect(findingsByCode.get("restore-heavy-command:yarn install")).toMatchObject({
+    expect(findAt("restore-heavy-command", 19)).toMatchObject({
       code: "restore-heavy-command",
       severity: "medium",
-      lineStart: 19,
+      matchedText: "yarn install",
     });
   });
 

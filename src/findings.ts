@@ -446,7 +446,7 @@ function hasNegatedCommandContext(
   command: string,
   context: string | null,
 ): boolean {
-  if (!context) return isNegatedNear(command, 0, command.length);
+  if (!context) return false;
 
   const commandIndex = context.toLowerCase().indexOf(command.toLowerCase());
   if (commandIndex === -1) return isNegatedNear(context, 0, context.length);
@@ -468,7 +468,6 @@ function riskyCommandFindings(
 
       const finding = riskyCommandFindingFor(command);
       if (!finding) continue;
-      if (isNegatedNear(command, 0, command.length)) continue;
 
       const lineNumber =
         commandRecord.kind === "fenced"
