@@ -10,6 +10,13 @@ import { analyzeInstructionSources, summarize, type AnalyzedInstructionSource, t
 import { parseSections, extractCommands, type InstructionSection, type CommandRecord } from "./parser.js";
 import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findings.js";
 import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
+import {
+  buildCandidates,
+  classifyTask,
+  formatSuggestText,
+  selectCandidates,
+} from "./suggest.js";
+export type { SuggestResult } from "./suggest.js";
 
 export type DoctorDetails = {
   sections: InstructionSection[];
@@ -210,6 +217,51 @@ export function createProgram(): Command {
       }
 
       for (const line of formatDoctorText(report)) {
+        console.log(line);
+      }
+    });
+
+  program
+    .command("suggest")
+    .description("Suggest relevant skill candidates for a task.")
+    .argument("<task>", "Task description to classify and match")
+    .option("--json", "Output JSON")
+    .action(async (task: string, options: { json?: boolean }) => {
+      const cwd = process.cwd();
+      const sources = await discoverInstructionSources(cwd);
+      const sourceContents = new Map(
+        (
+          await Promise.all(
+            sources.map(async (source) => {
+              try {
+                return [
+                  source.path,
+                  await readFile(path.join(cwd, source.path), "utf8"),
+                ] as const;
+              } catch {
+                return null;
+              }
+            }),
+          )
+        ).filter((entry): entry is readonly [string, string] => entry !== null),
+      );
+      const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
+      const findings = detectFindings({
+        sources: analyzed,
+        sections: [],
+        commands: [],
+      });
+      const skillMetadata = extractAllSkillMetadata(analyzed, sourceContents, findings);
+      const candidates = buildCandidates(skillMetadata);
+      const classified = classifyTask(task);
+      const result = selectCandidates(candidates, classified);
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      for (const line of formatSuggestText(result)) {
         console.log(line);
       }
     });
