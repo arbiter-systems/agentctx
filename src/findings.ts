@@ -59,14 +59,16 @@ function relatedSource(value: LocatedValue): {
   return source;
 }
 
-function withLocation<T extends Finding | LocatedValue>(
-  value: T,
+function withFindingLocation(
+  value: Omit<Finding, "lineStart" | "lineEnd">,
   lineStart: number | undefined,
   lineEnd: number | undefined,
-): T {
-  if (lineStart !== undefined) value.lineStart = lineStart;
-  if (lineEnd !== undefined) value.lineEnd = lineEnd;
-  return value;
+): Finding {
+  return {
+    ...value,
+    ...(lineStart !== undefined ? { lineStart } : {}),
+    ...(lineEnd !== undefined ? { lineEnd } : {}),
+  };
 }
 
 function normalizeGuidanceLine(line: string): string | null {
@@ -89,19 +91,26 @@ function normalizeGuidanceLine(line: string): string | null {
   return withoutMarkdown;
 }
 
-function guidanceLinesFromSection(section: InstructionSection): LocatedValue[] {
+function guidanceLinesFromSection(
+  section: InstructionSection,
+  fencedCommands: CommandRecord[],
+): LocatedValue[] {
   const values: LocatedValue[] = [];
   const lines = section.text.split("\n");
-  let inFence = false;
 
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index] ?? "";
-    const trimmed = line.trimStart();
-    if (trimmed.startsWith("```")) {
-      inFence = !inFence;
+    const lineNumber = section.lineStart + index;
+    if (
+      fencedCommands.some(
+        (command) =>
+          command.sourcePath === section.sourcePath &&
+          lineNumber >= command.lineStart &&
+          lineNumber <= command.lineEnd,
+      )
+    ) {
       continue;
     }
-    if (inFence) continue;
 
     const normalized = normalizeGuidanceLine(line);
     if (!normalized) continue;
@@ -109,8 +118,8 @@ function guidanceLinesFromSection(section: InstructionSection): LocatedValue[] {
     values.push({
       normalized,
       sourcePath: section.sourcePath,
-      lineStart: section.lineStart + index,
-      lineEnd: section.lineStart + index,
+      lineStart: lineNumber,
+      lineEnd: lineNumber,
       estimatedTokens: estimateTokens(normalized),
     });
   }
@@ -156,7 +165,7 @@ function duplicateFindings(
 
     for (const duplicate of group.slice(1)) {
       findings.push(
-        withLocation(
+        withFindingLocation(
           {
             code,
             severity,
@@ -180,17 +189,6 @@ function sourceSizeFindings(sources: AnalyzedInstructionSource[]): Finding[] {
   const findings: Finding[] = [];
 
   for (const source of sources) {
-    if (source.estimatedTokens >= SOURCE_WARNING_TOKENS) {
-      findings.push({
-        code: "oversized-source",
-        severity: source.estimatedTokens >= SOURCE_HIGH_TOKENS ? "high" : "medium",
-        message: "Instruction source is larger than the recommended size.",
-        sourcePath: source.path,
-        estimatedAvoidableTokens: source.estimatedTokens - SOURCE_WARNING_TOKENS,
-        hint: "Split broad guidance into smaller scoped instruction files.",
-      });
-    }
-
     if (source.estimatedTokens >= HIGH_TOKEN_WASTE_SOURCE_TOKENS) {
       findings.push({
         code: "high-token-waste-source",
@@ -200,6 +198,15 @@ function sourceSizeFindings(sources: AnalyzedInstructionSource[]): Finding[] {
         estimatedAvoidableTokens:
           source.estimatedTokens - HIGH_TOKEN_WASTE_SOURCE_TOKENS,
         hint: "Prioritize reducing or scoping this file before adding more guidance.",
+      });
+    } else if (source.estimatedTokens >= SOURCE_WARNING_TOKENS) {
+      findings.push({
+        code: "oversized-source",
+        severity: source.estimatedTokens >= SOURCE_HIGH_TOKENS ? "high" : "medium",
+        message: "Instruction source is larger than the recommended size.",
+        sourcePath: source.path,
+        estimatedAvoidableTokens: source.estimatedTokens - SOURCE_WARNING_TOKENS,
+        hint: "Split broad guidance into smaller scoped instruction files.",
       });
     }
   }
@@ -227,7 +234,10 @@ export function detectFindings(input: {
   sections: InstructionSection[];
   commands: CommandRecord[];
 }): Finding[] {
-  const guidanceValues = input.sections.flatMap(guidanceLinesFromSection);
+  const fencedCommands = input.commands.filter((command) => command.kind === "fenced");
+  const guidanceValues = input.sections.flatMap((section) =>
+    guidanceLinesFromSection(section, fencedCommands),
+  );
   const commandValues = input.commands
     .map((command) => {
       const normalized = normalizeCommand(command.commandText);

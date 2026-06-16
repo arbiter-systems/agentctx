@@ -44,7 +44,15 @@ async function fileExists(filePath: string): Promise<boolean> {
     await access(filePath);
     return true;
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (
+      code === "ENOENT" ||
+      code === "ENOTDIR" ||
+      code === "EACCES" ||
+      code === "EPERM"
+    ) {
+      return false;
+    }
     throw err;
   }
 }

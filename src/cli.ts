@@ -34,19 +34,32 @@ export async function buildDoctorReport(
   opts: { details?: boolean } = {},
 ): Promise<DoctorReport> {
   const sources = await discoverInstructionSources(cwd);
-  const analyzed = await analyzeInstructionSources(sources, cwd);
+  const sourceContents = new Map(
+    (
+      await Promise.all(
+        sources.map(async (source) => {
+          try {
+            return [
+              source.path,
+              await readFile(path.join(cwd, source.path), "utf8"),
+            ] as const;
+          } catch {
+            return null;
+          }
+        }),
+      )
+    ).filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+  const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
   const baseSummary = summarize(analyzed);
 
   const allSections: InstructionSection[] = [];
   const allCommands: CommandRecord[] = [];
 
   for (const source of analyzed) {
-    let text: string;
-    try {
-      text = await readFile(path.join(cwd, source.path), "utf8");
-    } catch {
-      continue;
-    }
+    const text = sourceContents.get(source.path);
+    if (text === undefined) continue;
+
     const sections = parseSections(source.path, text);
     const commands = extractCommands(source.path, text, sections);
     allSections.push(...sections);
@@ -84,47 +97,72 @@ export async function buildDoctorReport(
 
 export function formatDoctorText(report: DoctorReport): string[] {
   const { summary } = report;
-  const lines = [
+  return [
     "agentctx doctor",
     `Discovered ${summary.sourceCount} instruction source${summary.sourceCount === 1 ? "" : "s"}.`,
     `Estimated instruction surface: ~${summary.estimatedTokens} tokens.`,
     `Detected ${summary.findingCount} finding${summary.findingCount === 1 ? "" : "s"}.`,
     `Estimated avoidable waste: ~${summary.estimatedAvoidableTokens} tokens.`,
+    ...formatParsedCounts(summary),
+    ...formatSources(report.sources),
+    ...formatFindings(report.findings),
   ];
+}
 
+function formatParsedCounts(summary: DoctorReport["summary"]): string[] {
   if (summary.sectionCount !== undefined && summary.commandCount !== undefined) {
-    lines.push(
+    return [
       `Parsed ${summary.sectionCount} section${summary.sectionCount === 1 ? "" : "s"}, ${summary.commandCount} command${summary.commandCount === 1 ? "" : "s"}.`,
-    );
+    ];
   }
 
-  for (const source of report.sources) {
-    lines.push(`- ${source.path} [${source.kind}] scope: ${source.scopePath} ~${source.estimatedTokens} tokens`);
-  }
+  return [];
+}
 
+function formatSources(sources: AnalyzedInstructionSource[]): string[] {
+  return sources.map(
+    (source) =>
+      `- ${source.path} [${source.kind}] scope: ${source.scopePath} ~${source.estimatedTokens} tokens`,
+  );
+}
+
+function formatFindings(findings: Finding[]): string[] {
   const severityRank = { high: 0, medium: 1, low: 2 };
-  const displayedFindings = [...report.findings]
+  const displayedFindings = [...findings]
     .sort((left, right) => severityRank[left.severity] - severityRank[right.severity])
     .slice(0, 10);
-  if (displayedFindings.length > 0) {
-    lines.push("Findings:");
-    for (const severity of ["high", "medium", "low"] as const) {
-      const matching = displayedFindings.filter((finding) => finding.severity === severity);
-      if (matching.length === 0) continue;
-      lines.push(`${severity}:`);
-      for (const finding of matching) {
+
+  if (displayedFindings.length === 0) return [];
+
+  return [
+    "Findings:",
+    ...formatFindingsBySeverity(displayedFindings),
+    ...formatOmittedFindingCount(findings.length, displayedFindings.length),
+  ];
+}
+
+function formatFindingsBySeverity(findings: Finding[]): string[] {
+  return (["high", "medium", "low"] as const).flatMap((severity) => {
+    const matching = findings.filter((finding) => finding.severity === severity);
+    if (matching.length === 0) return [];
+
+    return [
+      `${severity}:`,
+      ...matching.map((finding) => {
         const location = finding.lineStart === undefined
           ? finding.sourcePath
           : `${finding.sourcePath}:${finding.lineStart}`;
-        lines.push(`- ${finding.code} ${location} - ${finding.message}`);
-      }
-    }
-    if (report.findings.length > displayedFindings.length) {
-      lines.push(`... ${report.findings.length - displayedFindings.length} more finding${report.findings.length - displayedFindings.length === 1 ? "" : "s"} omitted.`);
-    }
-  }
+        return `- ${finding.code} ${location} - ${finding.message}`;
+      }),
+    ];
+  });
+}
 
-  return lines;
+function formatOmittedFindingCount(total: number, displayed: number): string[] {
+  const omitted = total - displayed;
+  if (omitted <= 0) return [];
+
+  return [`... ${omitted} more finding${omitted === 1 ? "" : "s"} omitted.`];
 }
 
 export function createProgram(): Command {

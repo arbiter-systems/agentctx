@@ -8,7 +8,8 @@ import { buildDoctorReport, formatDoctorText } from "../src/cli.js";
 
 const duplicatedGuidance =
   "Always run npm test before pushing changes to shared branches.";
-const duplicateCommand = "npm run build\nnpm test";
+const duplicateCommand =
+  "Run the deterministic validation command from inside this fenced block only.\nnpm test";
 const oversizedSentence =
   "This oversized skill guidance sentence is intentionally verbose so the deterministic token estimator crosses the default threshold for source and section findings.";
 
@@ -42,6 +43,14 @@ async function withFindingsFixture<T>(
         "```",
         "## Repeated Heading",
         "Keep assistant guidance focused.",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(fixtureRoot, "GEMINI.md"),
+      [
+        "# Medium Oversized Source",
+        ...Array.from({ length: 40 }, () => oversizedSentence),
         "",
       ].join("\n"),
     );
@@ -102,10 +111,41 @@ describe("doctor findings", () => {
     });
   });
 
+  it("does not treat fenced command text as duplicate guidance", async () => {
+    await withFindingsFixture(async (fixtureRoot) => {
+      const report = await buildDoctorReport(fixtureRoot);
+      const duplicateGuidanceFindings = report.findings.filter(
+        (finding) => finding.code === "duplicate-guidance",
+      );
+
+      expect(
+        duplicateGuidanceFindings.some((finding) =>
+          finding.sourcePath === "CLAUDE.md" && finding.lineStart === 4,
+        ),
+      ).toBe(false);
+    });
+  });
+
+  it("does not double-emit oversized-source for high-token-waste sources", async () => {
+    await withFindingsFixture(async (fixtureRoot) => {
+      const report = await buildDoctorReport(fixtureRoot);
+      const largeSkillFindings = report.findings.filter(
+        (finding) => finding.sourcePath === "skills/large/SKILL.md",
+      );
+
+      expect(
+        largeSkillFindings.some((finding) => finding.code === "high-token-waste-source"),
+      ).toBe(true);
+      expect(
+        largeSkillFindings.some((finding) => finding.code === "oversized-source"),
+      ).toBe(false);
+    });
+  });
+
   it("includes complete finding records in JSON output", async () => {
     await withFindingsFixture(async (fixtureRoot) => {
-      const output = JSON.parse(
-        JSON.stringify(await buildDoctorReport(fixtureRoot)),
+      const output = structuredClone(
+        await buildDoctorReport(fixtureRoot),
       );
       expect(output.findings.length).toBeGreaterThan(0);
       expect(output.findings[0]).toMatchObject({
