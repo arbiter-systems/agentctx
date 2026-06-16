@@ -11,7 +11,9 @@ describe("buildDoctorReport", () => {
     await expect(buildDoctorReport()).resolves.toMatchObject({
       command: "doctor",
       status: "ok",
-      sources: expect.any(Array)
+      summary: expect.any(Object),
+      sources: expect.any(Array),
+      findings: expect.any(Array)
     });
   });
 });
@@ -21,17 +23,30 @@ describe("formatDoctorText", () => {
     expect(formatDoctorText({
       command: "doctor",
       status: "ok",
+      summary: {
+        sourceCount: 1,
+        bytes: 168,
+        estimatedTokens: 42,
+        findingCount: 0,
+        estimatedAvoidableTokens: 0
+      },
       sources: [
         {
           path: "AGENTS.md",
           kind: "agents",
-          scopePath: "."
+          scopePath: ".",
+          bytes: 168,
+          estimatedTokens: 42,
         }
-      ]
+      ],
+      findings: []
     })).toEqual([
       "agentctx doctor",
       "Discovered 1 instruction source.",
-      "- AGENTS.md [agents] scope: ."
+      "Estimated instruction surface: ~42 tokens.",
+      "Detected 0 findings.",
+      "Estimated avoidable waste: ~0 tokens.",
+      "- AGENTS.md [agents] scope: . ~42 tokens"
     ]);
   });
 });
@@ -46,7 +61,15 @@ describe("doctor command", () => {
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
       command: "doctor",
       status: "ok",
-      sources: expect.any(Array)
+      summary: {
+        sourceCount: expect.any(Number),
+        bytes: expect.any(Number),
+        estimatedTokens: expect.any(Number),
+        findingCount: expect.any(Number),
+        estimatedAvoidableTokens: expect.any(Number)
+      },
+      sources: expect.any(Array),
+      findings: expect.any(Array)
     });
   });
 });

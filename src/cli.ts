@@ -1,35 +1,168 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import {
-  discoverInstructionSources,
-  type InstructionSource,
-} from "./discovery.js";
+import { discoverInstructionSources } from "./discovery.js";
+import { analyzeInstructionSources, summarize, type AnalyzedInstructionSource, type DoctorSummary } from "./analysis.js";
+import { parseSections, extractCommands, type InstructionSection, type CommandRecord } from "./parser.js";
+import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findings.js";
+
+export type DoctorDetails = {
+  sections: InstructionSection[];
+  commands: CommandRecord[];
+};
 
 export type DoctorReport = {
   command: "doctor";
   status: "ok";
-  sources: InstructionSource[];
+  summary: DoctorSummary & {
+    sectionCount?: number;
+    commandCount?: number;
+    findingCount: number;
+    estimatedAvoidableTokens: number;
+  };
+  sources: AnalyzedInstructionSource[];
+  findings: Finding[];
+  details?: DoctorDetails;
 };
 
-export async function buildDoctorReport(cwd = process.cwd()): Promise<DoctorReport> {
+export async function buildDoctorReport(
+  cwd = process.cwd(),
+  opts: { details?: boolean } = {},
+): Promise<DoctorReport> {
   const sources = await discoverInstructionSources(cwd);
-  return { command: "doctor", status: "ok", sources };
+  const sourceContents = new Map(
+    (
+      await Promise.all(
+        sources.map(async (source) => {
+          try {
+            return [
+              source.path,
+              await readFile(path.join(cwd, source.path), "utf8"),
+            ] as const;
+          } catch {
+            return null;
+          }
+        }),
+      )
+    ).filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+  const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
+  const baseSummary = summarize(analyzed);
+
+  const allSections: InstructionSection[] = [];
+  const allCommands: CommandRecord[] = [];
+
+  for (const source of analyzed) {
+    const text = sourceContents.get(source.path);
+    if (text === undefined) continue;
+
+    const sections = parseSections(source.path, text);
+    const commands = extractCommands(source.path, text, sections);
+    allSections.push(...sections);
+    allCommands.push(...commands);
+  }
+
+  const findings = detectFindings({
+    sources: analyzed,
+    sections: allSections,
+    commands: allCommands,
+  });
+  const summary = {
+    ...baseSummary,
+    findingCount: findings.length,
+    estimatedAvoidableTokens: summarizeAvoidableTokens(findings),
+    ...(opts.details
+      ? {
+          sectionCount: allSections.length,
+          commandCount: allCommands.length,
+        }
+      : {}),
+  };
+
+  return {
+    command: "doctor",
+    status: "ok",
+    summary,
+    sources: analyzed,
+    findings,
+    ...(opts.details
+      ? { details: { sections: allSections, commands: allCommands } }
+      : {}),
+  };
 }
 
 export function formatDoctorText(report: DoctorReport): string[] {
-  const count = report.sources.length;
-  const lines = [
+  const { summary } = report;
+  return [
     "agentctx doctor",
-    `Discovered ${count} instruction source${count === 1 ? "" : "s"}.`,
+    `Discovered ${summary.sourceCount} instruction source${summary.sourceCount === 1 ? "" : "s"}.`,
+    `Estimated instruction surface: ~${summary.estimatedTokens} tokens.`,
+    `Detected ${summary.findingCount} finding${summary.findingCount === 1 ? "" : "s"}.`,
+    `Estimated avoidable waste: ~${summary.estimatedAvoidableTokens} tokens.`,
+    ...formatParsedCounts(summary),
+    ...formatSources(report.sources),
+    ...formatFindings(report.findings),
   ];
+}
 
-  for (const source of report.sources) {
-    lines.push(`- ${source.path} [${source.kind}] scope: ${source.scopePath}`);
+function formatParsedCounts(summary: DoctorReport["summary"]): string[] {
+  if (summary.sectionCount !== undefined && summary.commandCount !== undefined) {
+    return [
+      `Parsed ${summary.sectionCount} section${summary.sectionCount === 1 ? "" : "s"}, ${summary.commandCount} command${summary.commandCount === 1 ? "" : "s"}.`,
+    ];
   }
 
-  return lines;
+  return [];
+}
+
+function formatSources(sources: AnalyzedInstructionSource[]): string[] {
+  return sources.map(
+    (source) =>
+      `- ${source.path} [${source.kind}] scope: ${source.scopePath} ~${source.estimatedTokens} tokens`,
+  );
+}
+
+function formatFindings(findings: Finding[]): string[] {
+  const severityRank = { high: 0, medium: 1, low: 2 };
+  const displayedFindings = [...findings]
+    .sort((left, right) => severityRank[left.severity] - severityRank[right.severity])
+    .slice(0, 10);
+
+  if (displayedFindings.length === 0) return [];
+
+  return [
+    "Findings:",
+    ...formatFindingsBySeverity(displayedFindings),
+    ...formatOmittedFindingCount(findings.length, displayedFindings.length),
+  ];
+}
+
+function formatFindingsBySeverity(findings: Finding[]): string[] {
+  return (["high", "medium", "low"] as const).flatMap((severity) => {
+    const matching = findings.filter((finding) => finding.severity === severity);
+    if (matching.length === 0) return [];
+
+    return [
+      `${severity}:`,
+      ...matching.map((finding) => {
+        const location = finding.lineStart === undefined
+          ? finding.sourcePath
+          : `${finding.sourcePath}:${finding.lineStart}`;
+        return `- ${finding.code} ${location} - ${finding.message}`;
+      }),
+    ];
+  });
+}
+
+function formatOmittedFindingCount(total: number, displayed: number): string[] {
+  const omitted = total - displayed;
+  if (omitted <= 0) return [];
+
+  return [`... ${omitted} more finding${omitted === 1 ? "" : "s"} omitted.`];
 }
 
 export function createProgram(): Command {
@@ -44,8 +177,9 @@ export function createProgram(): Command {
     .command("doctor")
     .description("Inspect instruction files and report waste, conflicts, and risks.")
     .option("--json", "Output JSON")
-    .action(async (options: { json?: boolean }) => {
-      const report = await buildDoctorReport();
+    .option("--details", "Include parsed sections and commands in output")
+    .action(async (options: { json?: boolean; details?: boolean }) => {
+      const report = await buildDoctorReport(process.cwd(), { details: options.details === true });
       if (options.json) {
         console.log(JSON.stringify(report, null, 2));
         return;
@@ -64,6 +198,12 @@ export async function runCli(argv = process.argv): Promise<void> {
 }
 
 const entrypoint = process.argv[1];
-if (entrypoint && import.meta.url === pathToFileURL(entrypoint).href) {
-  await runCli();
+if (entrypoint) {
+  try {
+    const isSelf =
+      realpathSync(entrypoint) === realpathSync(fileURLToPath(import.meta.url));
+    if (isSelf) await runCli();
+  } catch {
+    // entrypoint path doesn't exist — not running as CLI
+  }
 }

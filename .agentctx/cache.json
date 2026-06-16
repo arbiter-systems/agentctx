@@ -1,0 +1,20 @@
+{
+  "entries": {
+    "fixtures/discovery/excluded/allowed/SKILL.md": {
+      "path": "fixtures/discovery/excluded/allowed/SKILL.md",
+      "mtimeMs": 1781630598140.2783,
+      "size": 17,
+      "version": "0.1.0",
+      "bytes": 17,
+      "estimatedTokens": 5
+    },
+    "fixtures/discovery/skills/tools/review/SKILL.md": {
+      "path": "fixtures/discovery/skills/tools/review/SKILL.md",
+      "mtimeMs": 1781630598142.2773,
+      "size": 16,
+      "version": "0.1.0",
+      "bytes": 16,
+      "estimatedTokens": 4
+    }
+  }
+}
