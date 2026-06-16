@@ -606,9 +606,11 @@ function commandConflictSignalFor(command: string): Pick<ConflictSignal, "kind" 
   }
 
   if (/^dotnet\s+test\b/i.test(command)) {
+    const hasProjectPath = /^dotnet\s+test\s+\S+/i.test(command) &&
+      !/^dotnet\s+test\s+--/i.test(command);
     return {
       kind: "validation-scope",
-      value: /(?:^|\s)--no-restore(?:\s|$)/i.test(command) ? "bounded" : "full",
+      value: hasProjectPath ? "bounded" : "full",
       matchedText: command,
     };
   }
@@ -773,7 +775,7 @@ function conflictFindings(signals: ConflictSignal[]): Finding[] {
   for (const rule of conflictRules) {
     const first = firstSignal(signals, rule.kind, rule.values[0]);
     const second = firstSignal(signals, rule.kind, rule.values[1]);
-    if (!first || !second) continue;
+    if (!first || !second || first.sourcePath === second.sourcePath) continue;
 
     findings.push({
       code: rule.code,
