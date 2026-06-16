@@ -1,4 +1,5 @@
 import type { AnalyzedInstructionSource } from "./analysis.js";
+import { detectMissingGuidance } from "./missingGuidance.js";
 import type { CommandRecord, InstructionSection } from "./parser.js";
 import { estimateTokens } from "./tokenEstimate.js";
 
@@ -20,7 +21,13 @@ export type FindingCode =
   | "conflicting-validation-guidance"
   | "conflicting-format-guidance"
   | "conflicting-delegation-guidance"
-  | "conflicting-destructive-action-guidance";
+  | "conflicting-destructive-action-guidance"
+  | "missing-branch-guidance"
+  | "missing-pr-guidance"
+  | "missing-validation-guidance"
+  | "missing-destructive-command-guidance"
+  | "missing-skill-purpose"
+  | "missing-skill-trigger";
 
 export type ConflictSignal = {
   kind:
@@ -92,8 +99,8 @@ function withFindingLocation(
 ): Finding {
   return {
     ...value,
-    ...(lineStart !== undefined ? { lineStart } : {}),
-    ...(lineEnd !== undefined ? { lineEnd } : {}),
+    ...(lineStart === undefined ? {} : { lineStart }),
+    ...(lineEnd === undefined ? {} : { lineEnd }),
   };
 }
 
@@ -155,7 +162,7 @@ function guidanceLinesFromSection(
 
 function normalizeCommand(commandText: string): string {
   return commandText
-    .replace(/\r\n/g, "\n")
+    .replaceAll('\r\n', "\n")
     .split("\n")
     .map((line) => line.trim())
     .join("\n")
@@ -401,7 +408,7 @@ function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "
 
   if (/^dotnet\s+test\b/i.test(command) && !/(?:^|\s)--no-restore(?:\s|$)/i.test(command)) {
     return {
-      code: "unbounded-command",
+      code: "restore-heavy-command",
       severity: "medium",
       message: "Command runs dotnet test without --no-restore.",
       matchedText: command,
@@ -410,7 +417,7 @@ function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "
   }
 
   for (const packageManager of ["npm", "pnpm", "yarn"] as const) {
-    const exactTest = new RegExp(`^${packageManager}\\s+test\\s*$`, "i");
+    const exactTest = new RegExp(String.raw`^${packageManager}\s+test\s*$`, "i");
     if (exactTest.test(command) && !isScopedPackageTest(command, packageManager)) {
       return {
         code: "unbounded-command",
@@ -433,7 +440,7 @@ function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "
   }
 
   for (const packageManager of ["npm", "pnpm", "yarn"] as const) {
-    if (new RegExp(`^${packageManager}\\s+install\\b`, "i").test(command)) {
+    if (new RegExp(String.raw`^${packageManager}\s+install\b`, "i").test(command)) {
       return {
         code: "restore-heavy-command",
         severity: "medium",
@@ -539,8 +546,12 @@ const conflictLanguageRules: SignalRule[] = [
   {
     kind: "validation-scope",
     value: "full",
-    pattern:
-      /\b(?:run\s+all\s+tests|run\s+the\s+full\s+test\s+suite|full\s+validation|run\s+all\s+checks)\b/i,
+    pattern: /\brun\s+(?:all\s+tests|the\s+full\s+test\s+suite|all\s+checks)\b/i,
+  },
+  {
+    kind: "validation-scope",
+    value: "full",
+    pattern: /\bfull\s+validation\b/i,
   },
   {
     kind: "validation-scope",
@@ -630,67 +641,80 @@ function commandConflictSignalFor(command: string): Pick<ConflictSignal, "kind" 
   return null;
 }
 
-export function extractConflictSignals(input: {
-  sections: InstructionSection[];
-  commands: CommandRecord[];
-}): ConflictSignal[] {
+function conflictSignalsFromSection(
+  section: InstructionSection,
+  fencedCommands: CommandRecord[],
+): ConflictSignal[] {
   const signals: ConflictSignal[] = [];
-  const fencedCommands = input.commands.filter((command) => command.kind === "fenced");
+  const lines = section.text.split("\n");
 
-  for (const section of input.sections) {
-    const lines = section.text.split("\n");
-    for (let index = 0; index < lines.length; index++) {
-      const line = lines[index] ?? "";
-      const lineNumber = section.lineStart + index;
-      if (
-        fencedCommands.some(
-          (command) =>
-            command.sourcePath === section.sourcePath &&
-            lineNumber >= command.lineStart &&
-            lineNumber <= command.lineEnd,
-        )
-      ) {
-        continue;
-      }
-
-      for (const rule of conflictLanguageRules) {
-        const match = rule.pattern.exec(line);
-        if (!match?.[0]) continue;
-        signals.push({
-          kind: rule.kind,
-          value: rule.value,
-          sourcePath: section.sourcePath,
-          lineStart: lineNumber,
-          lineEnd: lineNumber,
-          matchedText: match[0],
-        });
-      }
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    const lineNumber = section.lineStart + index;
+    if (
+      fencedCommands.some(
+        (command) =>
+          command.sourcePath === section.sourcePath &&
+          lineNumber >= command.lineStart &&
+          lineNumber <= command.lineEnd,
+      )
+    ) {
+      continue;
     }
-  }
 
-  for (const commandRecord of input.commands) {
-    const lines = commandRecord.commandText.split("\n");
-    for (let index = 0; index < lines.length; index++) {
-      const command = normalizeCommandLine(lines[index] ?? "");
-      if (!command) continue;
-
-      const commandSignal = commandConflictSignalFor(command);
-      if (!commandSignal) continue;
-
-      const lineNumber =
-        commandRecord.kind === "fenced"
-          ? commandRecord.lineStart + index + 1
-          : commandRecord.lineStart;
+    for (const rule of conflictLanguageRules) {
+      const match = rule.pattern.exec(line);
+      if (!match?.[0]) continue;
       signals.push({
-        ...commandSignal,
-        sourcePath: commandRecord.sourcePath,
+        kind: rule.kind,
+        value: rule.value,
+        sourcePath: section.sourcePath,
         lineStart: lineNumber,
         lineEnd: lineNumber,
+        matchedText: match[0],
       });
     }
   }
 
   return signals;
+}
+
+function conflictSignalsFromCommand(commandRecord: CommandRecord): ConflictSignal[] {
+  const signals: ConflictSignal[] = [];
+  const lines = commandRecord.commandText.split("\n");
+
+  for (let index = 0; index < lines.length; index++) {
+    const command = normalizeCommandLine(lines[index] ?? "");
+    if (!command) continue;
+
+    const commandSignal = commandConflictSignalFor(command);
+    if (!commandSignal) continue;
+
+    const lineNumber =
+      commandRecord.kind === "fenced"
+        ? commandRecord.lineStart + index + 1
+        : commandRecord.lineStart;
+    signals.push({
+      ...commandSignal,
+      sourcePath: commandRecord.sourcePath,
+      lineStart: lineNumber,
+      lineEnd: lineNumber,
+    });
+  }
+
+  return signals;
+}
+
+export function extractConflictSignals(input: {
+  sections: InstructionSection[];
+  commands: CommandRecord[];
+}): ConflictSignal[] {
+  const fencedCommands = input.commands.filter((command) => command.kind === "fenced");
+
+  return [
+    ...input.sections.flatMap((section) => conflictSignalsFromSection(section, fencedCommands)),
+    ...input.commands.flatMap(conflictSignalsFromCommand),
+  ];
 }
 
 type ConflictRule = {
@@ -775,6 +799,8 @@ function conflictFindings(signals: ConflictSignal[]): Finding[] {
   for (const rule of conflictRules) {
     const first = firstSignal(signals, rule.kind, rule.values[0]);
     const second = firstSignal(signals, rule.kind, rule.values[1]);
+    // Intra-file conflicts (same sourcePath) are not reported; they are visible
+    // to the author in a single file and would produce noisy duplicate findings.
     if (!first || !second || first.sourcePath === second.sourcePath) continue;
 
     findings.push({
@@ -864,6 +890,10 @@ export function detectFindings(input: {
     ),
     ...sourceSizeFindings(input.sources),
     ...sectionSizeFindings(input.sections),
+    ...detectMissingGuidance({
+      sources: input.sources,
+      sections: input.sections,
+    }),
   ];
 }
 

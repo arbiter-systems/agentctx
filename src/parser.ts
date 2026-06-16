@@ -62,7 +62,7 @@ function parseOpeningFence(line: string): { marker: string; length: number } | n
   if (!marker) return null;
 
   return {
-    marker: "`",
+    marker: marker[0] as string,
     length: marker.length,
   };
 }
