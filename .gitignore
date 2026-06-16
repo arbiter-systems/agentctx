@@ -148,3 +148,6 @@ vite.config.ts.timestamp-*
 
 # agentctx internal cache
 .agentctx/
+.agentctx/cache.json
+.agentctx/tmp/
+.agentctx/*.log
