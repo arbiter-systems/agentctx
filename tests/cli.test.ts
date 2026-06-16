@@ -7,20 +7,31 @@ afterEach(() => {
 });
 
 describe("buildDoctorReport", () => {
-  it("returns the current placeholder report", () => {
-    expect(buildDoctorReport()).toEqual({
+  it("returns the discovered source report", async () => {
+    await expect(buildDoctorReport()).resolves.toMatchObject({
       command: "doctor",
       status: "ok",
-      message: "Not implemented yet"
+      sources: expect.any(Array)
     });
   });
 });
 
 describe("formatDoctorText", () => {
   it("renders the text output lines", () => {
-    expect(formatDoctorText(buildDoctorReport())).toEqual([
+    expect(formatDoctorText({
+      command: "doctor",
+      status: "ok",
+      sources: [
+        {
+          path: "AGENTS.md",
+          kind: "agents",
+          scopePath: "."
+        }
+      ]
+    })).toEqual([
       "agentctx doctor",
-      "Not implemented yet"
+      "Discovered 1 instruction source.",
+      "- AGENTS.md [agents] scope: ."
     ]);
   });
 });
@@ -32,8 +43,10 @@ describe("doctor command", () => {
     await createProgram().parseAsync(["node", "agentctx", "doctor", "--json"]);
 
     expect(log).toHaveBeenCalledOnce();
-    expect(log.mock.calls[0]?.[0]).toBe(
-      JSON.stringify(buildDoctorReport(), null, 2)
-    );
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+      command: "doctor",
+      status: "ok",
+      sources: expect.any(Array)
+    });
   });
 });

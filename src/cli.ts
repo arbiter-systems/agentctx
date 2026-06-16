@@ -1,23 +1,36 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import {
+  discoverInstructionSources,
+  type InstructionSource,
+} from "./discovery.js";
 
 export type DoctorReport = {
   command: "doctor";
   status: "ok";
-  message: string;
+  sources: InstructionSource[];
 };
 
-export function buildDoctorReport(): DoctorReport {
-  return {
-    command: "doctor",
-    status: "ok",
-    message: "Not implemented yet"
-  };
+export async function buildDoctorReport(cwd = process.cwd()): Promise<DoctorReport> {
+  const sources = await discoverInstructionSources(cwd);
+  return { command: "doctor", status: "ok", sources };
 }
 
 export function formatDoctorText(report: DoctorReport): string[] {
-  return ["agentctx doctor", report.message];
+  const count = report.sources.length;
+  const lines = [
+    "agentctx doctor",
+    `Discovered ${count} instruction source${count === 1 ? "" : "s"}.`,
+  ];
+
+  for (const source of report.sources) {
+    lines.push(`- ${source.path} [${source.kind}] scope: ${source.scopePath}`);
+  }
+
+  return lines;
 }
 
 export function createProgram(): Command {
@@ -32,8 +45,8 @@ export function createProgram(): Command {
     .command("doctor")
     .description("Inspect instruction files and report waste, conflicts, and risks.")
     .option("--json", "Output JSON")
-    .action((options: { json?: boolean }) => {
-      const report = buildDoctorReport();
+    .action(async (options: { json?: boolean }) => {
+      const report = await buildDoctorReport();
       if (options.json) {
         console.log(JSON.stringify(report, null, 2));
         return;
@@ -52,6 +65,12 @@ export async function runCli(argv = process.argv): Promise<void> {
 }
 
 const entrypoint = process.argv[1];
-if (entrypoint && import.meta.url === pathToFileURL(entrypoint).href) {
-  await runCli();
+if (entrypoint) {
+  try {
+    const isSelf =
+      realpathSync(entrypoint) === realpathSync(fileURLToPath(import.meta.url));
+    if (isSelf) await runCli();
+  } catch {
+    // entrypoint path doesn't exist — not running as CLI
+  }
 }
