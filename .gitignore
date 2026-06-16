@@ -145,3 +145,6 @@ vite.config.ts.timestamp-*
 
 # Editor-local settings
 .vscode/settings.json
+
+# agentctx internal cache
+.agentctx/

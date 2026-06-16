@@ -11,6 +11,7 @@ describe("buildDoctorReport", () => {
     await expect(buildDoctorReport()).resolves.toMatchObject({
       command: "doctor",
       status: "ok",
+      summary: expect.any(Object),
       sources: expect.any(Array)
     });
   });
@@ -21,17 +22,21 @@ describe("formatDoctorText", () => {
     expect(formatDoctorText({
       command: "doctor",
       status: "ok",
+      summary: { sourceCount: 1, bytes: 168, estimatedTokens: 42 },
       sources: [
         {
           path: "AGENTS.md",
           kind: "agents",
-          scopePath: "."
+          scopePath: ".",
+          bytes: 168,
+          estimatedTokens: 42,
         }
       ]
     })).toEqual([
       "agentctx doctor",
       "Discovered 1 instruction source.",
-      "- AGENTS.md [agents] scope: ."
+      "Estimated instruction surface: ~42 tokens.",
+      "- AGENTS.md [agents] scope: . ~42 tokens"
     ]);
   });
 });
