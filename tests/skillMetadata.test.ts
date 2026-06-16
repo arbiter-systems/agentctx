@@ -171,10 +171,45 @@ describe("extractSkillMetadata — without frontmatter", () => {
     const meta = extractSkillMetadata(source, NO_FRONTMATTER_WITH_HEADING_TEXT);
     expect(meta.pathApplicability).toEqual([]);
   });
+
+  it("collects path bullets under sub-headings inside a Scope section", () => {
+    const text = `# My Skill
+
+## Scope
+
+- src/**
+
+### Sub-note
+
+- tests/**
+`;
+    const source = makeSource("skills/my-skill/SKILL.md");
+    const meta = extractSkillMetadata(source, text);
+    expect(meta.pathApplicability).toEqual(["src/**", "tests/**"]);
+  });
+
+  it("triggers differ from tasks when a When to use section is present", () => {
+    const text = `# Security Audit
+
+Use this skill for security audit and validation.
+
+## When to use
+
+Invoke when asked to review security issues or run a security audit.
+`;
+    const source = makeSource("skills/security-audit/SKILL.md");
+    const meta = extractSkillMetadata(source, text);
+    // tasks scanned from full body: includes "security", "audit", "validation", "review"
+    expect(meta.tasks).toContain("security");
+    expect(meta.tasks).toContain("audit");
+    // triggers scanned from When to use section: "review", "security", "audit"
+    // importantly "validation" is not in the trigger section
+    expect(meta.triggers).not.toContain("validation");
+  });
 });
 
 describe("extractSkillMetadata — mixed metadataSource", () => {
-  it("sets metadataSource to mixed when frontmatter has name but tasks are inferred", () => {
+  it("sets metadataSource to frontmatter when frontmatter has name (even if other fields are inferred)", () => {
     const text = `---
 name: my-skill
 ---
@@ -186,6 +221,21 @@ Use this skill for auditing and review.
     const source = makeSource("skills/my-skill/SKILL.md");
     const meta = extractSkillMetadata(source, text);
     expect(meta.name).toBe("my-skill");
+    expect(meta.metadataSource).toBe("frontmatter");
+  });
+
+  it("sets metadataSource to mixed when frontmatter block exists but has no name", () => {
+    const text = `---
+summary: "Audits the repository state."
+---
+
+# Repo Audit
+
+Use this skill for auditing and review.
+`;
+    const source = makeSource("skills/repo-audit/SKILL.md");
+    const meta = extractSkillMetadata(source, text);
+    expect(meta.name).toBe("repo-audit");
     expect(meta.metadataSource).toBe("mixed");
   });
 });

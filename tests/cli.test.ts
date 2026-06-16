@@ -52,6 +52,64 @@ describe("formatDoctorText", () => {
   });
 });
 
+describe("formatDoctorText — skill metadata count", () => {
+  const baseReport = {
+    command: "doctor" as const,
+    status: "ok" as const,
+    summary: {
+      sourceCount: 0,
+      bytes: 0,
+      estimatedTokens: 0,
+      findingCount: 0,
+      estimatedAvoidableTokens: 0,
+    },
+    sources: [],
+    findings: [],
+  };
+
+  it("omits the count line when there are no skill metadata records", () => {
+    const lines = formatDoctorText({ ...baseReport, skillMetadata: [] });
+    expect(lines.some((l) => l.includes("skill metadata"))).toBe(false);
+  });
+
+  it("renders singular form for one skill metadata record", () => {
+    const lines = formatDoctorText({
+      ...baseReport,
+      skillMetadata: [
+        {
+          sourcePath: "skills/foo/SKILL.md",
+          name: "foo",
+          tasks: [],
+          triggers: [],
+          pathApplicability: [],
+          estimatedTokens: 10,
+          penalties: [],
+          metadataSource: "inferred",
+        },
+      ],
+    });
+    expect(lines).toContain("Extracted 1 skill metadata record.");
+  });
+
+  it("renders plural form for multiple skill metadata records", () => {
+    const record = {
+      sourcePath: "skills/foo/SKILL.md",
+      name: "foo",
+      tasks: [],
+      triggers: [],
+      pathApplicability: [],
+      estimatedTokens: 10,
+      penalties: [],
+      metadataSource: "inferred" as const,
+    };
+    const lines = formatDoctorText({
+      ...baseReport,
+      skillMetadata: [record, { ...record, sourcePath: "skills/bar/SKILL.md", name: "bar" }],
+    });
+    expect(lines).toContain("Extracted 2 skill metadata records.");
+  });
+});
+
 describe("doctor command", () => {
   it("prints JSON when requested", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);

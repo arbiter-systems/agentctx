@@ -1,10 +1,10 @@
 import path from "node:path";
 import type { AnalyzedInstructionSource } from "./analysis.js";
-import type { Finding } from "./findings.js";
+import type { Finding, FindingCode } from "./findings.js";
 import { estimateTokens } from "./tokenEstimate.js";
 
 export type SkillPenalty = {
-  code: string;
+  code: FindingCode;
   severity: "low" | "medium" | "high";
   estimatedAvoidableTokens?: number;
 };
@@ -29,11 +29,16 @@ type ParsedFrontmatter = {
   paths?: string[];
 };
 
-// Must start at line 1 (^ anchors to start of string with default flags)
+// Must start at line 1 (^ anchors to start of string with default flags).
+// Only inline bracket arrays ([a, b, c]) are supported; YAML block sequences
+// (- item per line) are not parsed and will be silently ignored.
 const FRONTMATTER_BLOCK_RE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 const ATX_HEADING_RE = /^#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/m;
+const ATX_HEADING_LEVEL_RE = /^(#{1,6})[ \t]+/;
 const PATH_SECTION_HEADING_RE =
   /^#{1,6}[ \t]+(?:paths?|applies?\s+to|scope)[ \t]*$/im;
+const TRIGGER_SECTION_HEADING_RE =
+  /^#{1,6}[ \t]+(?:when\s+to\s+use|triggers?|use\s+when|invoke\s+when)[ \t]*$/im;
 
 const TASK_KEYWORDS = [
   "audit",
@@ -91,6 +96,7 @@ function stripFrontmatter(text: string): string {
 function inferName(sourcePath: string): string {
   const dir = path.dirname(sourcePath);
   const dirName = path.basename(dir);
+  // Root-level SKILL.md has no meaningful parent directory name
   return dirName === "." ? "unknown" : dirName;
 }
 
@@ -111,20 +117,78 @@ function inferKeywords(text: string): string[] {
   return TASK_KEYWORDS.filter((kw) => lower.includes(kw));
 }
 
-function inferPathApplicability(text: string): string[] {
-  if (!PATH_SECTION_HEADING_RE.test(text)) return [];
-
+// Extract text lines from a section whose heading matches headingRE.
+// Stops at the next heading at the same or shallower depth so that
+// sub-headings inside the section are included rather than terminating it.
+function extractSectionText(text: string, headingRE: RegExp): string | null {
   const lines = text.split(/\r?\n/);
-  const paths: string[] = [];
+  const sectionLines: string[] = [];
   let inSection = false;
+  let sectionDepth = 0;
 
   for (const line of lines) {
-    if (/^#{1,6}[ \t]+(?:paths?|applies?\s+to|scope)[ \t]*$/i.test(line)) {
-      inSection = true;
-      continue;
+    const levelMatch = ATX_HEADING_LEVEL_RE.exec(line);
+    if (levelMatch) {
+      const level = (levelMatch[1] ?? "").length;
+      if (!inSection) {
+        if (headingRE.test(line)) {
+          inSection = true;
+          sectionDepth = level;
+        }
+      } else if (level <= sectionDepth) {
+        break;
+      } else {
+        sectionLines.push(line);
+      }
+    } else if (inSection) {
+      sectionLines.push(line);
     }
-    if (inSection) {
-      if (/^#{1,6}/.test(line)) break;
+  }
+
+  return sectionLines.length > 0 ? sectionLines.join("\n") : null;
+}
+
+function inferTriggers(bodyText: string): string[] {
+  // Prefer keywords from a dedicated trigger/when-to-use section so that
+  // triggers and tasks can differ when the skill has explicit trigger guidance.
+  const sectionText = extractSectionText(bodyText, TRIGGER_SECTION_HEADING_RE);
+  return inferKeywords(sectionText ?? bodyText);
+}
+
+function buildPenalties(findings: Finding[], sourcePath: string): SkillPenalty[] {
+  return findings
+    .filter((f) => f.sourcePath === sourcePath)
+    .map((f) => {
+      const penalty: SkillPenalty = { code: f.code, severity: f.severity };
+      if (f.estimatedAvoidableTokens !== undefined) {
+        penalty.estimatedAvoidableTokens = f.estimatedAvoidableTokens;
+      }
+      return penalty;
+    });
+}
+
+function inferPathApplicability(bodyText: string): string[] {
+  if (!PATH_SECTION_HEADING_RE.test(bodyText)) return [];
+
+  const lines = bodyText.split(/\r?\n/);
+  const paths: string[] = [];
+  let inSection = false;
+  let sectionDepth = 0;
+
+  for (const line of lines) {
+    const levelMatch = ATX_HEADING_LEVEL_RE.exec(line);
+    if (levelMatch) {
+      const level = (levelMatch[1] ?? "").length;
+      if (!inSection) {
+        if (/^#{1,6}[ \t]+(?:paths?|applies?\s+to|scope)[ \t]*$/i.test(line)) {
+          inSection = true;
+          sectionDepth = level;
+        }
+      } else if (level <= sectionDepth) {
+        break;
+      }
+      // Sub-headings inside the section do not terminate bullet collection
+    } else if (inSection) {
       const bullet = /^[ \t]*[-*+][ \t]+(.+)$/.exec(line);
       if (bullet?.[1]) paths.push(bullet[1].trim());
     }
@@ -140,70 +204,35 @@ export function extractSkillMetadata(
 ): SkillMetadata {
   const fm = parseFrontmatter(text);
   const body = stripFrontmatter(text);
-  let usedInference = false;
 
-  let name: string;
-  if (fm?.name) {
-    name = fm.name;
-  } else {
-    name = inferName(source.path);
-    usedInference = true;
-  }
+  const name = fm?.name ?? inferName(source.path);
 
   let summary: string | undefined;
   if (fm?.summary) {
     summary = fm.summary;
   } else {
     summary = inferSummary(body);
-    if (summary !== undefined) usedInference = true;
   }
 
-  let tasks: string[];
-  if (fm?.tasks) {
-    tasks = fm.tasks;
-  } else {
-    tasks = inferKeywords(text);
-    if (tasks.length > 0) usedInference = true;
-  }
-
-  let triggers: string[];
-  if (fm?.triggers) {
-    triggers = fm.triggers;
-  } else {
-    triggers = inferKeywords(text);
-    if (triggers.length > 0) usedInference = true;
-  }
-
-  let pathApplicability: string[];
-  if (fm?.paths) {
-    pathApplicability = fm.paths;
-  } else {
-    pathApplicability = inferPathApplicability(text);
-    if (pathApplicability.length > 0) usedInference = true;
-  }
+  const tasks = fm?.tasks ?? inferKeywords(body);
+  const triggers = fm?.triggers ?? inferTriggers(body);
+  const pathApplicability = fm?.paths ?? inferPathApplicability(body);
 
   const estimatedTokensValue =
-    source.estimatedTokens > 0
-      ? source.estimatedTokens
-      : estimateTokens(text);
+    source.estimatedTokens > 0 ? source.estimatedTokens : estimateTokens(text);
 
-  const penalties: SkillPenalty[] = findings
-    .filter((f) => f.sourcePath === source.path)
-    .map((f) => {
-      const penalty: SkillPenalty = { code: f.code, severity: f.severity };
-      if (f.estimatedAvoidableTokens !== undefined) {
-        penalty.estimatedAvoidableTokens = f.estimatedAvoidableTokens;
-      }
-      return penalty;
-    });
+  const penalties = buildPenalties(findings, source.path);
 
+  // "frontmatter" = block present and name came from it (primary identity field).
+  // "mixed"       = block present but name was inferred from directory.
+  // "inferred"    = no frontmatter block at all.
   let metadataSource: "frontmatter" | "inferred" | "mixed";
   if (!fm) {
     metadataSource = "inferred";
-  } else if (usedInference) {
-    metadataSource = "mixed";
-  } else {
+  } else if (fm.name) {
     metadataSource = "frontmatter";
+  } else {
+    metadataSource = "mixed";
   }
 
   const metadata: SkillMetadata = {
@@ -228,7 +257,7 @@ export function extractAllSkillMetadata(
   findings: Finding[] = [],
 ): SkillMetadata[] {
   return sources
-    .filter((s) => s.kind === "skill" && s.path.endsWith("SKILL.md"))
+    .filter((s) => s.kind === "skill")
     .flatMap((source) => {
       const text = sourceContents.get(source.path);
       if (text === undefined) return [];
