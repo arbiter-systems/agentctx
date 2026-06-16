@@ -5,6 +5,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildDoctorReport, formatDoctorText } from "../src/cli.js";
+import { extractConflictSignals } from "../src/findings.js";
+import { extractCommands, parseSections } from "../src/parser.js";
 
 const fixturesRoot = path.resolve("fixtures/findings");
 const duplicatedGuidance =
@@ -267,5 +269,115 @@ describe("doctor findings", () => {
     expect(output).toContain("full-repo-format-command AGENTS.md:6");
     expect(output).not.toContain("Run clean validation before handoff.");
     expect(outputLines.length).toBeLessThanOrEqual(30);
+  });
+
+  it("extracts explicit conflict signals from instruction lines and commands", () => {
+    const text = [
+      "# Workflow",
+      "",
+      "Always branch from dev.",
+      "Run `dotnet format --include src/findings.ts`.",
+      "Use main session only for this repository.",
+      "",
+    ].join("\n");
+    const sections = parseSections("AGENTS.md", text);
+    const commands = extractCommands("AGENTS.md", text, sections);
+    const signals = extractConflictSignals({ sections, commands });
+
+    expect(signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "branch-target",
+          value: "dev",
+          sourcePath: "AGENTS.md",
+          lineStart: 3,
+          lineEnd: 3,
+          matchedText: "branch from dev",
+        }),
+        expect.objectContaining({
+          kind: "format-scope",
+          value: "bounded",
+          lineStart: 4,
+          matchedText: "dotnet format --include src/findings.ts",
+        }),
+        expect.objectContaining({
+          kind: "delegation-mode",
+          value: "main-session-only",
+          lineStart: 5,
+          matchedText: "main session only",
+        }),
+      ]),
+    );
+  });
+
+  it("detects narrow explicit core instruction conflicts", async () => {
+    const report = await buildDoctorReport(path.join(fixturesRoot, "conflicts"));
+    const findConflict = (code: string) =>
+      report.findings.find((finding) => finding.code === code);
+
+    expect(findConflict("conflicting-branch-target")).toMatchObject({
+      severity: "medium",
+      sourcePath: "AGENTS.md",
+      lineStart: 3,
+      matchedText: "branch from dev",
+      relatedSources: [
+        {
+          sourcePath: "CLAUDE.md",
+          lineStart: 3,
+          lineEnd: 3,
+        },
+      ],
+      hint: expect.any(String),
+    });
+    expect(findConflict("conflicting-pr-target")).toMatchObject({
+      severity: "medium",
+      sourcePath: "AGENTS.md",
+      lineStart: 4,
+      relatedSources: [expect.objectContaining({ sourcePath: "CLAUDE.md", lineStart: 4 })],
+    });
+    expect(findConflict("conflicting-validation-guidance")).toMatchObject({
+      severity: "medium",
+      sourcePath: "AGENTS.md",
+      lineStart: 5,
+      relatedSources: [expect.objectContaining({ sourcePath: "CLAUDE.md", lineStart: 5 })],
+    });
+    expect(findConflict("conflicting-format-guidance")).toMatchObject({
+      severity: "medium",
+      sourcePath: "AGENTS.md",
+      lineStart: 6,
+      relatedSources: [expect.objectContaining({ sourcePath: "CLAUDE.md", lineStart: 6 })],
+    });
+    expect(findConflict("conflicting-delegation-guidance")).toMatchObject({
+      severity: "medium",
+      sourcePath: "AGENTS.md",
+      lineStart: 7,
+      relatedSources: [expect.objectContaining({ sourcePath: "CLAUDE.md", lineStart: 7 })],
+    });
+    expect(findConflict("conflicting-destructive-action-guidance")).toMatchObject({
+      severity: "high",
+      sourcePath: "AGENTS.md",
+      lineStart: 8,
+      relatedSources: [expect.objectContaining({ sourcePath: "CLAUDE.md", lineStart: 8 })],
+    });
+  });
+
+  it("does not emit conflicts unless opposing explicit signals are present", async () => {
+    const report = await buildDoctorReport(path.join(fixturesRoot, "no-conflicts"));
+    const conflictFindings = report.findings.filter((finding) =>
+      finding.code.startsWith("conflicting-"),
+    );
+
+    expect(conflictFindings).toEqual([]);
+  });
+
+  it("keeps human conflict output compact and omits full instruction bodies", async () => {
+    const report = await buildDoctorReport(path.join(fixturesRoot, "conflicts"));
+    const output = formatDoctorText(report).join("\n");
+
+    expect(output).toContain("conflicting-destructive-action-guidance AGENTS.md:8");
+    expect(output).toContain("conflicting-branch-target AGENTS.md:3");
+    expect(output).not.toContain("Always branch from dev.");
+    expect(output).not.toContain("Always branch from main.");
+    expect(output.split("\n").length).toBeLessThanOrEqual(30);
   });
 });
