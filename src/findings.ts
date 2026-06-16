@@ -10,7 +10,11 @@ export type FindingCode =
   | "duplicate-heading"
   | "oversized-source"
   | "oversized-section"
-  | "high-token-waste-source";
+  | "high-token-waste-source"
+  | "risky-validation-command"
+  | "unbounded-command"
+  | "restore-heavy-command"
+  | "full-repo-format-command";
 
 export type Finding = {
   code: FindingCode;
@@ -24,6 +28,7 @@ export type Finding = {
     lineStart?: number;
     lineEnd?: number;
   }>;
+  matchedText?: string;
   estimatedAvoidableTokens?: number;
   hint?: string;
 };
@@ -229,6 +234,261 @@ function sectionSizeFindings(sections: InstructionSection[]): Finding[] {
     }));
 }
 
+type RiskyLanguagePattern = {
+  pattern: RegExp;
+  severity: FindingSeverity;
+  message: string;
+  hint: string;
+};
+
+const riskyLanguagePatterns: RiskyLanguagePattern[] = [
+  {
+    pattern: /\brun\s+all\s+tests\b/i,
+    severity: "medium",
+    message: "Validation guidance asks for all tests.",
+    hint: "Prefer a focused, bounded validation command for the changed area.",
+  },
+  {
+    pattern: /\brun\s+the\s+full\s+test\s+suite\b/i,
+    severity: "medium",
+    message: "Validation guidance asks for the full test suite.",
+    hint: "Name the smallest relevant test target or ask before broad validation.",
+  },
+  {
+    pattern: /\bfull\s+validation\b/i,
+    severity: "medium",
+    message: "Validation guidance asks for full validation.",
+    hint: "Replace broad validation language with bounded checks.",
+  },
+  {
+    pattern: /\bclean\s+validation\b/i,
+    severity: "high",
+    message: "Validation guidance asks for clean validation.",
+    hint: "Avoid clean validation unless it is explicitly requested.",
+  },
+  {
+    pattern: /\brun\s+all\s+checks\b/i,
+    severity: "low",
+    message: "Validation guidance asks for all checks.",
+    hint: "Prefer naming focused checks for the touched surface.",
+  },
+  {
+    pattern: /\bentire\s+repo\b/i,
+    severity: "high",
+    message: "Validation guidance targets the entire repo.",
+    hint: "Scope validation to changed files, packages, or projects.",
+  },
+  {
+    pattern: /\brecursive\b/i,
+    severity: "high",
+    message: "Validation guidance asks for recursive work.",
+    hint: "Use explicit bounded paths instead of recursive validation.",
+  },
+  {
+    pattern: /\bfull\s+repo\b/i,
+    severity: "high",
+    message: "Validation guidance targets the full repo.",
+    hint: "Scope validation to changed files, packages, or projects.",
+  },
+];
+
+const negationPatterns = [
+  /\bdo\s+not\b/i,
+  /\bdon't\b/i,
+  /\bavoid\b/i,
+  /\bnever\b/i,
+  /\bunless\s+explicitly\s+requested\b/i,
+  /\bask\s+before\b/i,
+];
+
+function isNegatedNear(text: string, matchStart: number, matchEnd: number): boolean {
+  const before = text.slice(Math.max(0, matchStart - 80), matchStart);
+  const after = text.slice(matchEnd, Math.min(text.length, matchEnd + 80));
+  return negationPatterns.some((pattern) => pattern.test(before) || pattern.test(after));
+}
+
+function riskyValidationLanguageFindings(
+  sections: InstructionSection[],
+  fencedCommands: CommandRecord[],
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const section of sections) {
+    const lines = section.text.split("\n");
+
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index] ?? "";
+      const lineNumber = section.lineStart + index;
+      if (
+        fencedCommands.some(
+          (command) =>
+            command.sourcePath === section.sourcePath &&
+            lineNumber >= command.lineStart &&
+            lineNumber <= command.lineEnd,
+        )
+      ) {
+        continue;
+      }
+
+      for (const riskyPattern of riskyLanguagePatterns) {
+        const match = riskyPattern.pattern.exec(line);
+        if (!match?.[0]) continue;
+        if (isNegatedNear(line, match.index, match.index + match[0].length)) continue;
+
+        findings.push({
+          code: "risky-validation-command",
+          severity: riskyPattern.severity,
+          message: riskyPattern.message,
+          sourcePath: section.sourcePath,
+          lineStart: lineNumber,
+          lineEnd: lineNumber,
+          matchedText: match[0],
+          hint: riskyPattern.hint,
+        });
+      }
+    }
+  }
+
+  return findings;
+}
+
+function normalizeCommandLine(commandText: string): string {
+  return commandText
+    .trim()
+    .replace(/^\s*(?:[$>]\s*)+/, "")
+    .replace(/^[*-+]\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isScopedPackageTest(command: string, packageManager: "npm" | "pnpm" | "yarn"): boolean {
+  if (packageManager === "npm") return /^npm\s+test\s+--\s+\S+/i.test(command);
+  if (packageManager === "pnpm") return /^pnpm\s+test\s+--filter\s+\S+/i.test(command);
+  return /^yarn\s+test\s+\S+/i.test(command);
+}
+
+function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "lineStart" | "lineEnd"> | null {
+  if (/^dotnet\s+format\b/i.test(command) && !/\s--include(?:=|\s+\S+)/i.test(command)) {
+    return {
+      code: "full-repo-format-command",
+      severity: "high",
+      message: "Command runs broad dotnet format.",
+      matchedText: command,
+      hint: "Use dotnet format with --include for the changed file or path.",
+    };
+  }
+
+  if (/^dotnet\s+test\b/i.test(command) && !/(?:^|\s)--no-restore(?:\s|$)/i.test(command)) {
+    return {
+      code: "unbounded-command",
+      severity: "medium",
+      message: "Command runs dotnet test without --no-restore.",
+      matchedText: command,
+      hint: "Add --no-restore after restoring explicitly or use a narrower test target.",
+    };
+  }
+
+  for (const packageManager of ["npm", "pnpm", "yarn"] as const) {
+    const exactTest = new RegExp(`^${packageManager}\\s+test\\s*$`, "i");
+    if (exactTest.test(command) && !isScopedPackageTest(command, packageManager)) {
+      return {
+        code: "unbounded-command",
+        severity: "medium",
+        message: `Command runs plain ${packageManager} test.`,
+        matchedText: command,
+        hint: "Use a scoped test path, filter, or package-specific validation command.",
+      };
+    }
+  }
+
+  if (/^dotnet\s+restore\b/i.test(command)) {
+    return {
+      code: "restore-heavy-command",
+      severity: "medium",
+      message: "Command runs dotnet restore.",
+      matchedText: command,
+      hint: "Avoid restore-heavy commands unless the user explicitly requests dependency work.",
+    };
+  }
+
+  for (const packageManager of ["npm", "pnpm", "yarn"] as const) {
+    if (new RegExp(`^${packageManager}\\s+install\\b`, "i").test(command)) {
+      return {
+        code: "restore-heavy-command",
+        severity: "medium",
+        message: `Command runs ${packageManager} install.`,
+        matchedText: command,
+        hint: "Avoid install commands unless the user explicitly requests dependency work.",
+      };
+    }
+  }
+
+  return null;
+}
+
+function sectionLineText(
+  sections: InstructionSection[],
+  sourcePath: string,
+  lineNumber: number,
+): string | null {
+  const section = sections.find(
+    (candidate) =>
+      candidate.sourcePath === sourcePath &&
+      lineNumber >= candidate.lineStart &&
+      lineNumber <= candidate.lineEnd,
+  );
+  if (!section) return null;
+
+  return section.text.split("\n")[lineNumber - section.lineStart] ?? null;
+}
+
+function hasNegatedCommandContext(
+  command: string,
+  context: string | null,
+): boolean {
+  if (!context) return isNegatedNear(command, 0, command.length);
+
+  const commandIndex = context.toLowerCase().indexOf(command.toLowerCase());
+  if (commandIndex === -1) return isNegatedNear(context, 0, context.length);
+
+  return isNegatedNear(context, commandIndex, commandIndex + command.length);
+}
+
+function riskyCommandFindings(
+  commands: CommandRecord[],
+  sections: InstructionSection[],
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const commandRecord of commands) {
+    const lines = commandRecord.commandText.split("\n");
+    for (let index = 0; index < lines.length; index++) {
+      const command = normalizeCommandLine(lines[index] ?? "");
+      if (!command) continue;
+
+      const finding = riskyCommandFindingFor(command);
+      if (!finding) continue;
+      if (isNegatedNear(command, 0, command.length)) continue;
+
+      const lineNumber =
+        commandRecord.kind === "fenced"
+          ? commandRecord.lineStart + index + 1
+          : commandRecord.lineStart;
+      const context = sectionLineText(sections, commandRecord.sourcePath, lineNumber);
+      if (hasNegatedCommandContext(command, context)) continue;
+
+      findings.push({
+        ...finding,
+        sourcePath: commandRecord.sourcePath,
+        lineStart: lineNumber,
+        lineEnd: lineNumber,
+      });
+    }
+  }
+
+  return findings;
+}
+
 export function detectFindings(input: {
   sources: AnalyzedInstructionSource[];
   sections: InstructionSection[];
@@ -264,6 +524,8 @@ export function detectFindings(input: {
   }
 
   return [
+    ...riskyValidationLanguageFindings(input.sections, fencedCommands),
+    ...riskyCommandFindings(input.commands, input.sections),
     ...duplicateFindings(
       guidanceValues,
       "duplicate-guidance",
