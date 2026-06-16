@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   discoverInstructionSources,
@@ -64,6 +65,12 @@ export async function runCli(argv = process.argv): Promise<void> {
 }
 
 const entrypoint = process.argv[1];
-if (entrypoint && import.meta.url === pathToFileURL(entrypoint).href) {
-  await runCli();
+if (entrypoint) {
+  try {
+    const isSelf =
+      realpathSync(entrypoint) === realpathSync(fileURLToPath(import.meta.url));
+    if (isSelf) await runCli();
+  } catch {
+    // entrypoint path doesn't exist — not running as CLI
+  }
 }
