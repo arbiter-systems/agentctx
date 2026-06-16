@@ -1,4 +1,5 @@
 import type { AnalyzedInstructionSource } from "./analysis.js";
+import { detectMissingGuidance } from "./missingGuidance.js";
 import type { CommandRecord, InstructionSection } from "./parser.js";
 import { estimateTokens } from "./tokenEstimate.js";
 
@@ -20,7 +21,13 @@ export type FindingCode =
   | "conflicting-validation-guidance"
   | "conflicting-format-guidance"
   | "conflicting-delegation-guidance"
-  | "conflicting-destructive-action-guidance";
+  | "conflicting-destructive-action-guidance"
+  | "missing-branch-guidance"
+  | "missing-pr-guidance"
+  | "missing-validation-guidance"
+  | "missing-destructive-command-guidance"
+  | "missing-skill-purpose"
+  | "missing-skill-trigger";
 
 export type ConflictSignal = {
   kind:
@@ -864,6 +871,10 @@ export function detectFindings(input: {
     ),
     ...sourceSizeFindings(input.sources),
     ...sectionSizeFindings(input.sections),
+    ...detectMissingGuidance({
+      sources: input.sources,
+      sections: input.sections,
+    }),
   ];
 }
 

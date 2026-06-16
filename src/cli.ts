@@ -142,11 +142,20 @@ function formatFindings(findings: Finding[]): string[] {
 }
 
 function formatFindingsBySeverity(findings: Finding[]): string[] {
-  return (["high", "medium", "low"] as const).flatMap((severity) => {
-    const matching = findings.filter((finding) => finding.severity === severity);
-    if (matching.length === 0) return [];
+  const lines: string[] = [];
+  const hasMissingGuidance = findings.some((finding) =>
+    finding.code.startsWith("missing-"),
+  );
 
-    return [
+  for (const severity of ["high", "medium", "low"] as const) {
+    const matching = findings.filter((finding) => finding.severity === severity);
+    if (matching.length === 0) continue;
+
+    if (severity !== "high" && hasMissingGuidance && !lines.includes("Warnings:")) {
+      lines.push("Warnings:");
+    }
+
+    lines.push(
       `${severity}:`,
       ...matching.map((finding) => {
         const location = finding.lineStart === undefined
@@ -154,8 +163,10 @@ function formatFindingsBySeverity(findings: Finding[]): string[] {
           : `${finding.sourcePath}:${finding.lineStart}`;
         return `- ${finding.code} ${location} - ${finding.message}`;
       }),
-    ];
-  });
+    );
+  }
+
+  return lines;
 }
 
 function formatOmittedFindingCount(total: number, displayed: number): string[] {
