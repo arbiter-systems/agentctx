@@ -15,11 +15,6 @@ export type DoctorDetails = {
   commands: CommandRecord[];
 };
 
-import {
-  discoverInstructionSources,
-  type InstructionSource,
-} from "./discovery.js";
-
 export type DoctorReport = {
   command: "doctor";
   status: "ok";
