@@ -546,8 +546,12 @@ const conflictLanguageRules: SignalRule[] = [
   {
     kind: "validation-scope",
     value: "full",
-    pattern:
-      /\b(?:run\s+all\s+tests|run\s+the\s+full\s+test\s+suite|full\s+validation|run\s+all\s+checks)\b/i,
+    pattern: /\brun\s+(?:all\s+tests|the\s+full\s+test\s+suite|all\s+checks)\b/i,
+  },
+  {
+    kind: "validation-scope",
+    value: "full",
+    pattern: /\bfull\s+validation\b/i,
   },
   {
     kind: "validation-scope",
