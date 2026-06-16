@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   extractSkillMetadata,
   extractAllSkillMetadata,
-  type SkillMetadata,
 } from "../src/skillMetadata.js";
 import type { AnalyzedInstructionSource } from "../src/analysis.js";
 import type { Finding } from "../src/findings.js";
@@ -320,7 +319,7 @@ describe("extractSkillMetadata — JSON shape", () => {
   it("includes expected top-level fields only", () => {
     const source = makeSource("skills/repo-audit/SKILL.md");
     const meta = extractSkillMetadata(source, WITH_FRONTMATTER_TEXT);
-    const keys = Object.keys(meta).sort();
+    const keys = Object.keys(meta).sort((a, b) => a.localeCompare(b));
     expect(keys).toEqual(
       [
         "sourcePath",
@@ -332,7 +331,7 @@ describe("extractSkillMetadata — JSON shape", () => {
         "estimatedTokens",
         "penalties",
         "metadataSource",
-      ].sort(),
+      ].sort((a, b) => a.localeCompare(b)),
     );
   });
 });

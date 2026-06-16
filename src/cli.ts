@@ -73,7 +73,6 @@ export async function buildDoctorReport(
     sections: allSections,
     commands: allCommands,
   });
-  const skillMetadata = extractAllSkillMetadata(analyzed, sourceContents, findings);
   const summary = {
     ...baseSummary,
     findingCount: findings.length,
@@ -92,7 +91,7 @@ export async function buildDoctorReport(
     summary,
     sources: analyzed,
     findings,
-    skillMetadata,
+    skillMetadata: extractAllSkillMetadata(analyzed, sourceContents, findings),
     ...(opts.details
       ? { details: { sections: allSections, commands: allCommands } }
       : {}),

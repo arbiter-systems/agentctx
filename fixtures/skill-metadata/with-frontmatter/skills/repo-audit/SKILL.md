@@ -1,5 +1,6 @@
 ---
 name: repo-audit
+description: "Audit issue state against dev and produce an implementation plan."
 tasks: [audit, issue-review, implementation-planning]
 triggers: [audit issue, verify merged, review dev]
 summary: "Audit issue state against dev and produce an implementation plan."
