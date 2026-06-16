@@ -46,6 +46,12 @@ describe("parseSections", () => {
     });
   });
 
+  it("strips optional ATX closing hash sequences from heading names", () => {
+    const sections = parseSections("closing-hashes.md", "## My Section ##\nRun `npm test`.\n");
+
+    expect(sections[0]?.heading).toBe("My Section");
+  });
+
   it("produces a single (root) section for files without headings", async () => {
     const text = await fixture("no-headings.md");
     const sections = parseSections("no-headings.md", text);
@@ -158,6 +164,45 @@ describe("extractCommands", () => {
     // The "npm install" inside a fence should not produce an inline command
     expect(commands.filter((c) => c.kind === "inline")).toHaveLength(0);
     expect(commands.filter((c) => c.kind === "fenced")).toHaveLength(1);
+  });
+
+  it("does not close a fence on a longer backtick line with an info string", () => {
+    const text = [
+      "# Fences",
+      "```",
+      "npm install",
+      "````bash",
+      "npm test",
+      "```",
+      "",
+    ].join("\n");
+    const sections = parseSections("nested-fence-doc.md", text);
+    const commands = extractCommands("nested-fence-doc.md", text, sections);
+
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toMatchObject({
+      kind: "fenced",
+      commandText: "npm install\n````bash\nnpm test",
+      lineStart: 2,
+      lineEnd: 6,
+    });
+  });
+
+  it("emits a fenced command when the file ends before the closing fence", () => {
+    const text = "# Broken\n\n```\nnpm run build\n";
+    const sections = parseSections("unclosed.md", text);
+    const commands = extractCommands("unclosed.md", text, sections);
+
+    expect(commands).toEqual([
+      {
+        sourcePath: "unclosed.md",
+        commandText: "npm run build\n",
+        lineStart: 3,
+        lineEnd: 5,
+        sectionHeading: "Broken",
+        kind: "fenced",
+      },
+    ]);
   });
 
   it("returns empty array for empty file", () => {

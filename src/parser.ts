@@ -19,7 +19,8 @@ export type CommandRecord = {
   kind: "fenced" | "inline";
 };
 
-const ATX_HEADING_RE = /^#{1,6} /;
+const ATX_HEADING_RE = /^#{1,6}[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/;
+const FENCE_OPEN_RE = /^( {0,3})(`{3,})(.*)$/;
 
 const INLINE_PREFIXES = [
   "npm",
@@ -48,6 +49,27 @@ export function normalizeText(text: string): string {
     .replace(/^[ \t]*\d+\.[ \t]+/gm, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function parseAtxHeading(line: string): string | null {
+  const match = ATX_HEADING_RE.exec(line);
+  return match?.[1]?.trim() ?? null;
+}
+
+function parseOpeningFence(line: string): { marker: string; length: number } | null {
+  const match = FENCE_OPEN_RE.exec(line);
+  const marker = match?.[2];
+  if (!marker) return null;
+
+  return {
+    marker: "`",
+    length: marker.length,
+  };
+}
+
+function isClosingFence(line: string, fence: { marker: string; length: number }): boolean {
+  const closingFence = new RegExp(`^ {0,3}${fence.marker}{${fence.length},}[ \\t]*$`);
+  return closingFence.test(line);
 }
 
 export function parseSections(
@@ -82,9 +104,10 @@ export function parseSections(
     const line = lines[i] ?? "";
     const lineNum = i + 1;
 
-    if (ATX_HEADING_RE.test(line)) {
+    const heading = parseAtxHeading(line);
+    if (heading) {
       flush(lineNum - 1);
-      currentHeading = line.replace(/^#{1,6} /, "").trim();
+      currentHeading = heading;
       currentStart = lineNum;
       currentBuffer = [line];
     } else {
@@ -115,6 +138,7 @@ export function extractCommands(
   };
 
   let inFence = false;
+  let fence: { marker: string; length: number } | null = null;
   let fenceStart = 0;
   let fenceBuffer: string[] = [];
 
@@ -122,12 +146,16 @@ export function extractCommands(
     const line = lines[i] ?? "";
     const lineNum = i + 1;
 
-    if (!inFence && line.trimStart().startsWith("```")) {
+    const openingFence = parseOpeningFence(line);
+
+    if (!inFence && openingFence) {
       inFence = true;
+      fence = openingFence;
       fenceStart = lineNum;
       fenceBuffer = [];
-    } else if (inFence && line.trimStart().startsWith("```")) {
+    } else if (inFence && fence && isClosingFence(line, fence)) {
       inFence = false;
+      fence = null;
       const commandText = fenceBuffer.join("\n");
       if (commandText.trim()) {
         commands.push({
@@ -155,6 +183,20 @@ export function extractCommands(
           kind: "inline",
         });
       }
+    }
+  }
+
+  if (inFence) {
+    const commandText = fenceBuffer.join("\n");
+    if (commandText.trim()) {
+      commands.push({
+        sourcePath,
+        commandText,
+        lineStart: fenceStart,
+        lineEnd: lines.length,
+        sectionHeading: sectionHeadingForLine(fenceStart),
+        kind: "fenced",
+      });
     }
   }
 
