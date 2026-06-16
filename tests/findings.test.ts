@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildDoctorReport, formatDoctorText } from "../src/cli.js";
 
+const fixturesRoot = path.resolve("fixtures/findings");
 const duplicatedGuidance =
   "Always run npm test before pushing changes to shared branches.";
 const duplicateCommand =
@@ -164,5 +165,107 @@ describe("doctor findings", () => {
         ]),
       );
     });
+  });
+
+  it("detects risky validation language and unbounded commands", async () => {
+    const report = await buildDoctorReport(path.join(fixturesRoot, "risky-validation"));
+    const findAt = (code: string, lineStart: number) =>
+      report.findings.find((f) => f.code === code && f.lineStart === lineStart);
+
+    expect(findAt("risky-validation-command", 3)).toMatchObject({
+      code: "risky-validation-command",
+      severity: "high",
+      sourcePath: "AGENTS.md",
+      matchedText: "clean validation",
+      hint: expect.any(String),
+    });
+    expect(findAt("risky-validation-command", 4)).toMatchObject({
+      code: "risky-validation-command",
+      severity: "high",
+    });
+    expect(findAt("risky-validation-command", 5)).toMatchObject({
+      severity: "low",
+      matchedText: "Run all checks",
+    });
+    expect(findAt("full-repo-format-command", 6)).toMatchObject({
+      code: "full-repo-format-command",
+      severity: "high",
+      message: expect.any(String),
+    });
+    expect(findAt("unbounded-command", 8)).toMatchObject({
+      code: "unbounded-command",
+      severity: "medium",
+      matchedText: "dotnet test",
+    });
+    expect(findAt("unbounded-command", 10)).toMatchObject({
+      code: "unbounded-command",
+      severity: "medium",
+      matchedText: "npm test",
+    });
+    expect(findAt("unbounded-command", 12)).toMatchObject({
+      code: "unbounded-command",
+      severity: "medium",
+      matchedText: "pnpm test",
+    });
+    expect(findAt("unbounded-command", 14)).toMatchObject({
+      code: "unbounded-command",
+      severity: "medium",
+      matchedText: "yarn test",
+    });
+    expect(findAt("restore-heavy-command", 16)).toMatchObject({
+      code: "restore-heavy-command",
+      severity: "medium",
+      matchedText: "dotnet restore",
+    });
+    expect(findAt("restore-heavy-command", 17)).toMatchObject({
+      code: "restore-heavy-command",
+      severity: "medium",
+      matchedText: "npm install",
+    });
+    expect(findAt("restore-heavy-command", 18)).toMatchObject({
+      code: "restore-heavy-command",
+      severity: "medium",
+      matchedText: "pnpm install",
+    });
+    expect(findAt("restore-heavy-command", 19)).toMatchObject({
+      code: "restore-heavy-command",
+      severity: "medium",
+      matchedText: "yarn install",
+    });
+  });
+
+  it("does not flag bounded commands or negated risky guidance", async () => {
+    const report = await buildDoctorReport(path.join(fixturesRoot, "risky-validation"));
+    const matchedTexts = new Set(
+      report.findings.map((finding) => finding.matchedText),
+    );
+
+    expect(matchedTexts.has("dotnet format --include path/to/file.cs")).toBe(false);
+    expect(matchedTexts.has("dotnet test --no-restore")).toBe(false);
+    expect(matchedTexts.has("npm test -- path/to/test")).toBe(false);
+    expect(matchedTexts.has("pnpm test --filter package-name")).toBe(false);
+    expect(matchedTexts.has("yarn test path/to/test")).toBe(false);
+    expect(matchedTexts.has("full validation")).toBe(false);
+    expect(matchedTexts.has("run all tests")).toBe(false);
+    expect(
+      report.findings.some(
+        (finding) => finding.code === "unbounded-command" && finding.lineStart === 21,
+      ),
+    ).toBe(false);
+    expect(matchedTexts.has("recursive")).toBe(false);
+  });
+
+  it("prioritizes high-risk validation findings in compact human output", async () => {
+    const report = await buildDoctorReport(path.join(fixturesRoot, "risky-validation"));
+    const outputLines = formatDoctorText(report);
+    const output = outputLines.join("\n");
+    const highIndex = outputLines.indexOf("high:");
+    const mediumIndex = outputLines.indexOf("medium:");
+
+    expect(highIndex).toBeGreaterThanOrEqual(0);
+    expect(mediumIndex).toBeGreaterThan(highIndex);
+    expect(output).toContain("full-repo-format-command AGENTS.md:6");
+    expect(output).not.toContain("Run clean validation before handoff.");
+    expect(outputLines.length).toBeLessThanOrEqual(30);
   });
 });
