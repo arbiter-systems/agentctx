@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { discoverInstructionSources } from "./discovery.js";
 import { analyzeInstructionSources, summarize, type AnalyzedInstructionSource, type DoctorSummary } from "./analysis.js";
 import { parseSections, extractCommands, type InstructionSection, type CommandRecord } from "./parser.js";
+import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findings.js";
 
 export type DoctorDetails = {
   sections: InstructionSection[];
@@ -17,8 +18,14 @@ export type DoctorDetails = {
 export type DoctorReport = {
   command: "doctor";
   status: "ok";
-  summary: DoctorSummary & { sectionCount?: number; commandCount?: number };
+  summary: DoctorSummary & {
+    sectionCount?: number;
+    commandCount?: number;
+    findingCount: number;
+    estimatedAvoidableTokens: number;
+  };
   sources: AnalyzedInstructionSource[];
+  findings: Finding[];
   details?: DoctorDetails;
 };
 
@@ -29,10 +36,6 @@ export async function buildDoctorReport(
   const sources = await discoverInstructionSources(cwd);
   const analyzed = await analyzeInstructionSources(sources, cwd);
   const baseSummary = summarize(analyzed);
-
-  if (!opts.details) {
-    return { command: "doctor", status: "ok", summary: baseSummary, sources: analyzed };
-  }
 
   const allSections: InstructionSection[] = [];
   const allCommands: CommandRecord[] = [];
@@ -50,16 +53,32 @@ export async function buildDoctorReport(
     allCommands.push(...commands);
   }
 
+  const findings = detectFindings({
+    sources: analyzed,
+    sections: allSections,
+    commands: allCommands,
+  });
+  const summary = {
+    ...baseSummary,
+    findingCount: findings.length,
+    estimatedAvoidableTokens: summarizeAvoidableTokens(findings),
+    ...(opts.details
+      ? {
+          sectionCount: allSections.length,
+          commandCount: allCommands.length,
+        }
+      : {}),
+  };
+
   return {
     command: "doctor",
     status: "ok",
-    summary: {
-      ...baseSummary,
-      sectionCount: allSections.length,
-      commandCount: allCommands.length,
-    },
+    summary,
     sources: analyzed,
-    details: { sections: allSections, commands: allCommands },
+    findings,
+    ...(opts.details
+      ? { details: { sections: allSections, commands: allCommands } }
+      : {}),
   };
 }
 
@@ -69,6 +88,8 @@ export function formatDoctorText(report: DoctorReport): string[] {
     "agentctx doctor",
     `Discovered ${summary.sourceCount} instruction source${summary.sourceCount === 1 ? "" : "s"}.`,
     `Estimated instruction surface: ~${summary.estimatedTokens} tokens.`,
+    `Detected ${summary.findingCount} finding${summary.findingCount === 1 ? "" : "s"}.`,
+    `Estimated avoidable waste: ~${summary.estimatedAvoidableTokens} tokens.`,
   ];
 
   if (summary.sectionCount !== undefined && summary.commandCount !== undefined) {
@@ -79,6 +100,28 @@ export function formatDoctorText(report: DoctorReport): string[] {
 
   for (const source of report.sources) {
     lines.push(`- ${source.path} [${source.kind}] scope: ${source.scopePath} ~${source.estimatedTokens} tokens`);
+  }
+
+  const severityRank = { high: 0, medium: 1, low: 2 };
+  const displayedFindings = [...report.findings]
+    .sort((left, right) => severityRank[left.severity] - severityRank[right.severity])
+    .slice(0, 10);
+  if (displayedFindings.length > 0) {
+    lines.push("Findings:");
+    for (const severity of ["high", "medium", "low"] as const) {
+      const matching = displayedFindings.filter((finding) => finding.severity === severity);
+      if (matching.length === 0) continue;
+      lines.push(`${severity}:`);
+      for (const finding of matching) {
+        const location = finding.lineStart === undefined
+          ? finding.sourcePath
+          : `${finding.sourcePath}:${finding.lineStart}`;
+        lines.push(`- ${finding.code} ${location} - ${finding.message}`);
+      }
+    }
+    if (report.findings.length > displayedFindings.length) {
+      lines.push(`... ${report.findings.length - displayedFindings.length} more finding${report.findings.length - displayedFindings.length === 1 ? "" : "s"} omitted.`);
+    }
   }
 
   return lines;

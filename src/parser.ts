@@ -101,7 +101,7 @@ export function parseSections(
   };
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
+    const line = (lines[i] ?? "").replace(/\r$/, "");
     const lineNum = i + 1;
 
     const heading = parseAtxHeading(line);
@@ -143,7 +143,7 @@ export function extractCommands(
   let fenceBuffer: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
+    const line = (lines[i] ?? "").replace(/\r$/, "");
     const lineNum = i + 1;
 
     const openingFence = parseOpeningFence(line);
