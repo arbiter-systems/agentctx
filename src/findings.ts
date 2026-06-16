@@ -99,8 +99,8 @@ function withFindingLocation(
 ): Finding {
   return {
     ...value,
-    ...(lineStart !== undefined ? { lineStart } : {}),
-    ...(lineEnd !== undefined ? { lineEnd } : {}),
+    ...(lineStart === undefined ? {} : { lineStart }),
+    ...(lineEnd === undefined ? {} : { lineEnd }),
   };
 }
 
@@ -162,7 +162,7 @@ function guidanceLinesFromSection(
 
 function normalizeCommand(commandText: string): string {
   return commandText
-    .replace(/\r\n/g, "\n")
+    .replaceAll('\r\n', "\n")
     .split("\n")
     .map((line) => line.trim())
     .join("\n")
@@ -417,7 +417,7 @@ function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "
   }
 
   for (const packageManager of ["npm", "pnpm", "yarn"] as const) {
-    const exactTest = new RegExp(`^${packageManager}\\s+test\\s*$`, "i");
+    const exactTest = new RegExp(String.raw`^${packageManager}\s+test\s*$`, "i");
     if (exactTest.test(command) && !isScopedPackageTest(command, packageManager)) {
       return {
         code: "unbounded-command",
@@ -440,7 +440,7 @@ function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "
   }
 
   for (const packageManager of ["npm", "pnpm", "yarn"] as const) {
-    if (new RegExp(`^${packageManager}\\s+install\\b`, "i").test(command)) {
+    if (new RegExp(String.raw`^${packageManager}\s+install\b`, "i").test(command)) {
       return {
         code: "restore-heavy-command",
         severity: "medium",
@@ -637,67 +637,80 @@ function commandConflictSignalFor(command: string): Pick<ConflictSignal, "kind" 
   return null;
 }
 
-export function extractConflictSignals(input: {
-  sections: InstructionSection[];
-  commands: CommandRecord[];
-}): ConflictSignal[] {
+function conflictSignalsFromSection(
+  section: InstructionSection,
+  fencedCommands: CommandRecord[],
+): ConflictSignal[] {
   const signals: ConflictSignal[] = [];
-  const fencedCommands = input.commands.filter((command) => command.kind === "fenced");
+  const lines = section.text.split("\n");
 
-  for (const section of input.sections) {
-    const lines = section.text.split("\n");
-    for (let index = 0; index < lines.length; index++) {
-      const line = lines[index] ?? "";
-      const lineNumber = section.lineStart + index;
-      if (
-        fencedCommands.some(
-          (command) =>
-            command.sourcePath === section.sourcePath &&
-            lineNumber >= command.lineStart &&
-            lineNumber <= command.lineEnd,
-        )
-      ) {
-        continue;
-      }
-
-      for (const rule of conflictLanguageRules) {
-        const match = rule.pattern.exec(line);
-        if (!match?.[0]) continue;
-        signals.push({
-          kind: rule.kind,
-          value: rule.value,
-          sourcePath: section.sourcePath,
-          lineStart: lineNumber,
-          lineEnd: lineNumber,
-          matchedText: match[0],
-        });
-      }
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    const lineNumber = section.lineStart + index;
+    if (
+      fencedCommands.some(
+        (command) =>
+          command.sourcePath === section.sourcePath &&
+          lineNumber >= command.lineStart &&
+          lineNumber <= command.lineEnd,
+      )
+    ) {
+      continue;
     }
-  }
 
-  for (const commandRecord of input.commands) {
-    const lines = commandRecord.commandText.split("\n");
-    for (let index = 0; index < lines.length; index++) {
-      const command = normalizeCommandLine(lines[index] ?? "");
-      if (!command) continue;
-
-      const commandSignal = commandConflictSignalFor(command);
-      if (!commandSignal) continue;
-
-      const lineNumber =
-        commandRecord.kind === "fenced"
-          ? commandRecord.lineStart + index + 1
-          : commandRecord.lineStart;
+    for (const rule of conflictLanguageRules) {
+      const match = rule.pattern.exec(line);
+      if (!match?.[0]) continue;
       signals.push({
-        ...commandSignal,
-        sourcePath: commandRecord.sourcePath,
+        kind: rule.kind,
+        value: rule.value,
+        sourcePath: section.sourcePath,
         lineStart: lineNumber,
         lineEnd: lineNumber,
+        matchedText: match[0],
       });
     }
   }
 
   return signals;
+}
+
+function conflictSignalsFromCommand(commandRecord: CommandRecord): ConflictSignal[] {
+  const signals: ConflictSignal[] = [];
+  const lines = commandRecord.commandText.split("\n");
+
+  for (let index = 0; index < lines.length; index++) {
+    const command = normalizeCommandLine(lines[index] ?? "");
+    if (!command) continue;
+
+    const commandSignal = commandConflictSignalFor(command);
+    if (!commandSignal) continue;
+
+    const lineNumber =
+      commandRecord.kind === "fenced"
+        ? commandRecord.lineStart + index + 1
+        : commandRecord.lineStart;
+    signals.push({
+      ...commandSignal,
+      sourcePath: commandRecord.sourcePath,
+      lineStart: lineNumber,
+      lineEnd: lineNumber,
+    });
+  }
+
+  return signals;
+}
+
+export function extractConflictSignals(input: {
+  sections: InstructionSection[];
+  commands: CommandRecord[];
+}): ConflictSignal[] {
+  const fencedCommands = input.commands.filter((command) => command.kind === "fenced");
+
+  return [
+    ...input.sections.flatMap((section) => conflictSignalsFromSection(section, fencedCommands)),
+    ...input.commands.flatMap(conflictSignalsFromCommand),
+  ];
 }
 
 type ConflictRule = {
