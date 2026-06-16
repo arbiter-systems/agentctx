@@ -1,6 +1,8 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
+export const CACHE_VERSION = "0.1.0";
+
 const CACHE_DIR = ".agentctx";
 const CACHE_FILE = ".agentctx/cache.json";
 
@@ -8,7 +10,6 @@ export type CacheEntry = {
   path: string;
   mtimeMs: number;
   size: number;
-  hash: string;
   version: string;
   bytes: number;
   estimatedTokens: number;

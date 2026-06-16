@@ -51,6 +51,7 @@ describe("doctor command", () => {
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
       command: "doctor",
       status: "ok",
+      summary: { sourceCount: expect.any(Number), bytes: expect.any(Number), estimatedTokens: expect.any(Number) },
       sources: expect.any(Array)
     });
   });
