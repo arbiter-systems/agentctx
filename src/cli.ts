@@ -10,6 +10,7 @@ import { analyzeInstructionSources, summarize, type AnalyzedInstructionSource, t
 import { parseSections, extractCommands, type InstructionSection, type CommandRecord } from "./parser.js";
 import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findings.js";
 import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
+import { getChangedFiles, filterToInstructionSources, toPosixPath } from "./gitChanged.js";
 import {
   buildCandidates,
   classifyTask,
@@ -36,13 +37,49 @@ export type DoctorReport = {
   findings: Finding[];
   skillMetadata: SkillMetadata[];
   details?: DoctorDetails;
+  changed?: {
+    enabled: boolean;
+    changedFiles: string[];
+    changedInstructionFiles: string[];
+  };
 };
 
 export async function buildDoctorReport(
   cwd = process.cwd(),
-  opts: { details?: boolean } = {},
+  opts: { details?: boolean; changed?: boolean } = {},
 ): Promise<DoctorReport> {
-  const sources = await discoverInstructionSources(cwd);
+  const allSources = await discoverInstructionSources(cwd);
+
+  let changedMeta: DoctorReport["changed"] | undefined;
+  let sources = allSources;
+
+  if (opts.changed) {
+    const changedFiles = await getChangedFiles(cwd);
+    const changedInstructionFiles = filterToInstructionSources(changedFiles, allSources);
+    changedMeta = { enabled: true, changedFiles, changedInstructionFiles };
+
+    if (changedInstructionFiles.length === 0) {
+      return {
+        command: "doctor",
+        status: "ok",
+        summary: {
+          sourceCount: 0,
+          bytes: 0,
+          estimatedTokens: 0,
+          findingCount: 0,
+          estimatedAvoidableTokens: 0,
+        },
+        sources: [],
+        findings: [],
+        skillMetadata: [],
+        changed: changedMeta,
+      };
+    }
+
+    const changedSet = new Set(changedInstructionFiles);
+    sources = allSources.filter((s) => changedSet.has(toPosixPath(s.path)));
+  }
+
   const sourceContents = new Map(
     (
       await Promise.all(
@@ -62,8 +99,8 @@ export async function buildDoctorReport(
   const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
   const baseSummary = summarize(analyzed);
 
-  const allSections: InstructionSection[] = [];
-  const allCommands: CommandRecord[] = [];
+  const parsedSections: InstructionSection[] = [];
+  const parsedCommands: CommandRecord[] = [];
 
   for (const source of analyzed) {
     const text = sourceContents.get(source.path);
@@ -71,14 +108,14 @@ export async function buildDoctorReport(
 
     const sections = parseSections(source.path, text);
     const commands = extractCommands(source.path, text, sections);
-    allSections.push(...sections);
-    allCommands.push(...commands);
+    parsedSections.push(...sections);
+    parsedCommands.push(...commands);
   }
 
   const findings = detectFindings({
     sources: analyzed,
-    sections: allSections,
-    commands: allCommands,
+    sections: parsedSections,
+    commands: parsedCommands,
   });
   const summary = {
     ...baseSummary,
@@ -86,8 +123,8 @@ export async function buildDoctorReport(
     estimatedAvoidableTokens: summarizeAvoidableTokens(findings),
     ...(opts.details
       ? {
-          sectionCount: allSections.length,
-          commandCount: allCommands.length,
+          sectionCount: parsedSections.length,
+          commandCount: parsedCommands.length,
         }
       : {}),
   };
@@ -100,15 +137,29 @@ export async function buildDoctorReport(
     findings,
     skillMetadata: extractAllSkillMetadata(analyzed, sourceContents, findings),
     ...(opts.details
-      ? { details: { sections: allSections, commands: allCommands } }
+      ? { details: { sections: parsedSections, commands: parsedCommands } }
       : {}),
+    ...(changedMeta === undefined ? {} : { changed: changedMeta }),
   };
 }
 
 export function formatDoctorText(report: DoctorReport): string[] {
-  const { summary } = report;
-  return [
-    "agentctx doctor",
+  const { summary, changed } = report;
+  const isChanged = changed?.enabled === true;
+
+  const lines: string[] = [isChanged ? "agentctx doctor --changed" : "agentctx doctor"];
+
+  if (isChanged && changed) {
+    lines.push(
+      `Changed files: ${changed.changedFiles.length}, instruction sources changed: ${changed.changedInstructionFiles.length}.`,
+    );
+    if (changed.changedInstructionFiles.length === 0) {
+      lines.push("No changed instruction sources found.");
+      return lines;
+    }
+  }
+
+  lines.push(
     `Discovered ${summary.sourceCount} instruction source${summary.sourceCount === 1 ? "" : "s"}.`,
     `Estimated instruction surface: ~${summary.estimatedTokens} tokens.`,
     `Detected ${summary.findingCount} finding${summary.findingCount === 1 ? "" : "s"}.`,
@@ -117,7 +168,9 @@ export function formatDoctorText(report: DoctorReport): string[] {
     ...formatSkillMetadataCount(report.skillMetadata),
     ...formatSources(report.sources),
     ...formatFindings(report.findings),
-  ];
+  );
+
+  return lines;
 }
 
 function formatSkillMetadataCount(skillMetadata: SkillMetadata[]): string[] {
@@ -209,15 +262,29 @@ export function createProgram(): Command {
     .description("Inspect instruction files and report waste, conflicts, and risks.")
     .option("--json", "Output JSON")
     .option("--details", "Include parsed sections and commands in output")
-    .action(async (options: { json?: boolean; details?: boolean }) => {
-      const report = await buildDoctorReport(process.cwd(), { details: options.details === true });
-      if (options.json) {
-        console.log(JSON.stringify(report, null, 2));
-        return;
-      }
+    .option("--changed", "Analyze only instruction sources changed in the working tree")
+    .action(async (options: { json?: boolean; details?: boolean; changed?: boolean }) => {
+      try {
+        const report = await buildDoctorReport(process.cwd(), {
+          details: options.details === true,
+          changed: options.changed === true,
+        });
 
-      for (const line of formatDoctorText(report)) {
-        console.log(line);
+        if (report.findings.some((f) => f.severity === "high")) {
+          process.exitCode = 1;
+        }
+
+        if (options.json) {
+          console.log(JSON.stringify(report, null, 2));
+          return;
+        }
+
+        for (const line of formatDoctorText(report)) {
+          console.log(line);
+        }
+      } catch (err) {
+        process.exitCode = 2;
+        if (!options.json) console.error(String(err));
       }
     });
 
