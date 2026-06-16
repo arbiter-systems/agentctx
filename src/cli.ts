@@ -3,10 +3,8 @@ import { Command } from "commander";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import {
-  discoverInstructionSources,
-  type InstructionSource,
-} from "./discovery.js";
+import { discoverInstructionSources } from "./discovery.js";
+import { analyzeInstructionSources, summarize, type AnalyzedInstructionSource, type DoctorSummary } from "./analysis.js";
 
 import {
   discoverInstructionSources,
@@ -16,23 +14,26 @@ import {
 export type DoctorReport = {
   command: "doctor";
   status: "ok";
-  sources: InstructionSource[];
+  summary: DoctorSummary;
+  sources: AnalyzedInstructionSource[];
 };
 
 export async function buildDoctorReport(cwd = process.cwd()): Promise<DoctorReport> {
   const sources = await discoverInstructionSources(cwd);
-  return { command: "doctor", status: "ok", sources };
+  const analyzed = await analyzeInstructionSources(sources, cwd);
+  return { command: "doctor", status: "ok", summary: summarize(analyzed), sources: analyzed };
 }
 
 export function formatDoctorText(report: DoctorReport): string[] {
-  const count = report.sources.length;
+  const { summary } = report;
   const lines = [
     "agentctx doctor",
-    `Discovered ${count} instruction source${count === 1 ? "" : "s"}.`,
+    `Discovered ${summary.sourceCount} instruction source${summary.sourceCount === 1 ? "" : "s"}.`,
+    `Estimated instruction surface: ~${summary.estimatedTokens} tokens.`,
   ];
 
   for (const source of report.sources) {
-    lines.push(`- ${source.path} [${source.kind}] scope: ${source.scopePath}`);
+    lines.push(`- ${source.path} [${source.kind}] scope: ${source.scopePath} ~${source.estimatedTokens} tokens`);
   }
 
   return lines;
