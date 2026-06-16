@@ -1,12 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { afterEach, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildCandidates,
+  buildPrompt,
   classifyTask,
   formatSuggestText,
   scoreCandidate,
   selectCandidates,
+  type ScoredSuggestCandidate,
   type SuggestCandidate,
   type SuggestResult,
 } from "../src/suggest.js";
@@ -286,11 +287,15 @@ describe("formatSuggestText", () => {
   const classified = classifyTask("audit issue 330");
 
   function makeResult(overrides: Partial<SuggestResult> = {}): SuggestResult {
+    const selected = overrides.selected ?? [];
     return {
       input: "audit issue 330",
       classification: classified,
-      selected: [],
+      selected,
       excluded: [],
+      route: "audit",
+      prompt: buildPrompt("audit issue 330", "audit", selected),
+      estimatedAvoidedContext: { selectedTokens: 0, excludedTokens: 0, estimatedAvoidedTokens: 0 },
       ...overrides,
     };
   }
@@ -398,5 +403,110 @@ describe("suggest command — JSON output", () => {
         penalties: expect.any(Array),
       });
     }
+  });
+
+  it("JSON output includes prompt, route, and estimatedAvoidedContext", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await createProgram().parseAsync(["node", "agentctx", "suggest", "review PR 344 for security issues", "--json"]);
+    const parsed = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(parsed).toMatchObject({
+      prompt: expect.any(String),
+      route: expect.any(String),
+      estimatedAvoidedContext: {
+        selectedTokens: expect.any(Number),
+        excludedTokens: expect.any(Number),
+        estimatedAvoidedTokens: expect.any(Number),
+      },
+    });
+  });
+
+  it("JSON review prompt is compact and does not include full skill body", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await createProgram().parseAsync(["node", "agentctx", "suggest", "review PR 344 for security issues", "--json"]);
+    const parsed = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(typeof parsed.prompt).toBe("string");
+    expect(parsed.prompt.length).toBeLessThan(1400);
+    expect(parsed.route).toBe("review");
+  });
+
+  it("JSON audit prompt targets correct route", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await createProgram().parseAsync(["node", "agentctx", "suggest", "audit issue 330 against dev", "--json"]);
+    const parsed = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(parsed.route).toBe("audit");
+    expect(parsed.prompt).toContain("audit issue 330 against dev");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Prompt templates — all six categories
+// ---------------------------------------------------------------------------
+
+describe("prompt templates — all six categories covered", () => {
+  const tasksByCat: Record<string, string> = {
+    audit: "audit issue 330 against dev",
+    review: "review PR 344 for security issues",
+    implement: "implement the new suggest command",
+    docs: "write documentation for the API",
+    debug: "debug the failing test",
+    planning: "plan the roadmap for Q3",
+  };
+
+  for (const [category, task] of Object.entries(tasksByCat)) {
+    it(`${category} category produces a non-empty prompt`, () => {
+      const classified = classifyTask(task);
+      const result = selectCandidates([], classified);
+      expect(result.route).toBe(category);
+      expect(result.prompt.length).toBeGreaterThan(0);
+      expect(result.prompt).toContain(task);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// formatSuggestText — new fields
+// ---------------------------------------------------------------------------
+
+describe("formatSuggestText — estimated avoided context", () => {
+  it("includes estimated avoided context line", () => {
+    const classified = classifyTask("audit issue 330");
+    const result = selectCandidates([], classified);
+    const lines = formatSuggestText(result);
+    expect(lines.some((l) => l.includes("Estimated avoided context"))).toBe(true);
+  });
+
+  it("avoided context sums excluded tokens", () => {
+    const candidates = [
+      makeCandidate({ name: "a", tasks: ["audit"], estimatedTokens: 100 }),
+      makeCandidate({ name: "b", tasks: ["audit"], estimatedTokens: 200 }),
+      makeCandidate({ name: "c", tasks: ["audit"], estimatedTokens: 150 }),
+      makeCandidate({ name: "d", tasks: ["audit"], estimatedTokens: 300 }),
+    ];
+    const classified = classifyTask("audit issue 330");
+    const result = selectCandidates(candidates, classified);
+    expect(result.estimatedAvoidedContext.estimatedAvoidedTokens).toBe(
+      result.estimatedAvoidedContext.excludedTokens,
+    );
+    const excludedSum = result.excluded.reduce((s, c) => s + c.estimatedTokens, 0);
+    expect(result.estimatedAvoidedContext.excludedTokens).toBe(excludedSum);
+  });
+});
+
+describe("formatSuggestText — suggested prompt", () => {
+  it("includes suggested prompt section", () => {
+    const classified = classifyTask("audit issue 330");
+    const result = selectCandidates([], classified);
+    const lines = formatSuggestText(result);
+    expect(lines.some((l) => l.includes("Suggested prompt"))).toBe(true);
+  });
+
+  it("text output does not include full skill body (compact check)", () => {
+    const candidates = [
+      makeCandidate({ name: "repo-audit", tasks: ["audit"], estimatedTokens: 100 }),
+    ];
+    const classified = classifyTask("audit issue 330");
+    const result = selectCandidates(candidates, classified);
+    const output = formatSuggestText(result).join("\n");
+    expect(output.length).toBeLessThan(700);
   });
 });

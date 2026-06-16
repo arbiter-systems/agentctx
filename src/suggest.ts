@@ -272,16 +272,88 @@ export function scoreCandidate(
 }
 
 // ---------------------------------------------------------------------------
+// Prompt templates
+// ---------------------------------------------------------------------------
+
+const PROMPT_TEMPLATES: Record<TaskCategory, string> = {
+  audit: [
+    "Audit: {task}",
+    "Route: audit | Skills: {skills}",
+    "Verify implementation against issue requirements.",
+    "Check: correctness, completeness, spec adherence.",
+  ].join("\n"),
+  review: [
+    "Review: {task}",
+    "Route: review | Skills: {skills}",
+    "Review the PR/diff for defects.",
+    "Focus: correctness, security, style, edge cases.",
+  ].join("\n"),
+  implement: [
+    "Implement: {task}",
+    "Route: implement | Skills: {skills}",
+    "Build the feature following existing patterns.",
+    "Ensure: tests pass, code style matches, no regressions.",
+  ].join("\n"),
+  docs: [
+    "Docs update: {task}",
+    "Route: docs | Skills: {skills}",
+    "Update or create documentation.",
+    "Ensure: accuracy, clarity, completeness.",
+  ].join("\n"),
+  debug: [
+    "Debug: {task}",
+    "Route: debug | Skills: {skills}",
+    "Investigate the failure systematically.",
+    "Analyze: logs, stack traces, recent changes.",
+  ].join("\n"),
+  planning: [
+    "Plan: {task}",
+    "Route: planning | Skills: {skills}",
+    "Design the implementation approach.",
+    "Consider: scope, dependencies, risks, sequencing.",
+  ].join("\n"),
+};
+
+export function buildPrompt(
+  input: string,
+  category: TaskCategory,
+  selected: ScoredSuggestCandidate[],
+): string {
+  const skillNames = selected.map((c) => c.name).join(", ") || "none";
+  return PROMPT_TEMPLATES[category]
+    .split("{task}").join(input)
+    .split("{skills}").join(skillNames);
+}
+
+function computeAvoidedContext(
+  selected: ScoredSuggestCandidate[],
+  excluded: ScoredSuggestCandidate[],
+): EstimatedAvoidedContext {
+  const selectedTokens = selected.reduce((sum, c) => sum + c.estimatedTokens, 0);
+  const excludedTokens = excluded.reduce((sum, c) => sum + c.estimatedTokens, 0);
+  return { selectedTokens, excludedTokens, estimatedAvoidedTokens: excludedTokens };
+}
+
+// ---------------------------------------------------------------------------
 // Selection
 // ---------------------------------------------------------------------------
 
 const TOP_N = 3;
+
+export type EstimatedAvoidedContext = {
+  selectedTokens: number;
+  excludedTokens: number;
+  estimatedAvoidedTokens: number;
+};
 
 export type SuggestResult = {
   input: string;
   classification: ClassifiedTask;
   selected: ScoredSuggestCandidate[];
   excluded: ScoredSuggestCandidate[];
+  route: string;
+  prompt: string;
+  estimatedAvoidedContext: EstimatedAvoidedContext;
 };
 
 export function selectCandidates(
@@ -292,8 +364,11 @@ export function selectCandidates(
     .map((c) => scoreCandidate(c, classified))
     .sort((a, b) => b.score - a.score);
 
-  const relevant = scored.filter((c) => c.score > 0);
-  const irrelevant = scored.filter((c) => c.score <= 0);
+  const relevant: ScoredSuggestCandidate[] = [];
+  const irrelevant: ScoredSuggestCandidate[] = [];
+  for (const c of scored) {
+    (c.score > 0 ? relevant : irrelevant).push(c);
+  }
 
   const selected = relevant.slice(0, TOP_N).map((c) => ({ ...c, selected: true }));
   const excluded = [
@@ -301,7 +376,11 @@ export function selectCandidates(
     ...irrelevant,
   ];
 
-  return { input: classified.input, classification: classified, selected, excluded };
+  const route = classified.primaryCategory;
+  const prompt = buildPrompt(classified.input, classified.primaryCategory, selected);
+  const estimatedAvoidedContext = computeAvoidedContext(selected, excluded);
+
+  return { input: classified.input, classification: classified, selected, excluded, route, prompt, estimatedAvoidedContext };
 }
 
 // ---------------------------------------------------------------------------
@@ -337,11 +416,17 @@ function formatExcluded(excluded: ScoredSuggestCandidate[]): string[] {
 }
 
 export function formatSuggestText(result: SuggestResult): string[] {
+  const { estimatedAvoidedContext: ctx } = result;
   return [
     `agentctx suggest "${result.input}"`,
     `Task category: ${result.classification.primaryCategory}`,
     "",
     ...formatSelected(result.selected),
     ...formatExcluded(result.excluded),
+    "",
+    "Suggested prompt:",
+    ...result.prompt.split("\n").map((l) => `  ${l}`),
+    "",
+    `Estimated avoided context: ~${ctx.excludedTokens} tokens excluded (~${ctx.selectedTokens} selected)`,
   ];
 }
