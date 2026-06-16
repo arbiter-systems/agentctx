@@ -194,8 +194,8 @@ describe("doctor findings", () => {
       severity: "high",
       message: expect.any(String),
     });
-    expect(findAt("unbounded-command", 8)).toMatchObject({
-      code: "unbounded-command",
+    expect(findAt("restore-heavy-command", 8)).toMatchObject({
+      code: "restore-heavy-command",
       severity: "medium",
       matchedText: "dotnet test",
     });
