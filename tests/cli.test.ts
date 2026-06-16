@@ -39,7 +39,8 @@ describe("formatDoctorText", () => {
           estimatedTokens: 42,
         }
       ],
-      findings: []
+      findings: [],
+      skillMetadata: []
     })).toEqual([
       "agentctx doctor",
       "Discovered 1 instruction source.",
