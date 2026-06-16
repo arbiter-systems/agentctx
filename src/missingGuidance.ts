@@ -134,6 +134,9 @@ function shouldCheckGlobalGuidance(
     0,
   );
   if (totalTokens >= MIN_TOTAL_ESTIMATED_TOKENS) return true;
+  // If token estimation produced any result (even a small one), trust it and skip
+  // the text-length fallback. The fallback only applies when all sources failed to
+  // read (estimatedTokens === 0 for every source).
   if (totalTokens > 0) return false;
 
   const totalTextLength = [...textBySource.values()].reduce(

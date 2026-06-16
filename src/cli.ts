@@ -146,13 +146,15 @@ function formatFindingsBySeverity(findings: Finding[]): string[] {
   const hasMissingGuidance = findings.some((finding) =>
     finding.code.startsWith("missing-"),
   );
+  let warningsLabelAdded = false;
 
   for (const severity of ["high", "medium", "low"] as const) {
     const matching = findings.filter((finding) => finding.severity === severity);
     if (matching.length === 0) continue;
 
-    if (severity !== "high" && hasMissingGuidance && !lines.includes("Warnings:")) {
+    if (severity !== "high" && hasMissingGuidance && !warningsLabelAdded) {
       lines.push("Warnings:");
+      warningsLabelAdded = true;
     }
 
     lines.push(

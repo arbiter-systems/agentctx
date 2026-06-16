@@ -408,7 +408,7 @@ function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "
 
   if (/^dotnet\s+test\b/i.test(command) && !/(?:^|\s)--no-restore(?:\s|$)/i.test(command)) {
     return {
-      code: "unbounded-command",
+      code: "restore-heavy-command",
       severity: "medium",
       message: "Command runs dotnet test without --no-restore.",
       matchedText: command,
@@ -782,6 +782,8 @@ function conflictFindings(signals: ConflictSignal[]): Finding[] {
   for (const rule of conflictRules) {
     const first = firstSignal(signals, rule.kind, rule.values[0]);
     const second = firstSignal(signals, rule.kind, rule.values[1]);
+    // Intra-file conflicts (same sourcePath) are not reported; they are visible
+    // to the author in a single file and would produce noisy duplicate findings.
     if (!first || !second || first.sourcePath === second.sourcePath) continue;
 
     findings.push({
