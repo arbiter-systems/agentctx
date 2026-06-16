@@ -1,22 +1,66 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { realpathSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { discoverInstructionSources } from "./discovery.js";
 import { analyzeInstructionSources, summarize, type AnalyzedInstructionSource, type DoctorSummary } from "./analysis.js";
+import { parseSections, extractCommands, type InstructionSection, type CommandRecord } from "./parser.js";
+
+export type DoctorDetails = {
+  sections: InstructionSection[];
+  commands: CommandRecord[];
+};
 
 export type DoctorReport = {
   command: "doctor";
   status: "ok";
-  summary: DoctorSummary;
+  summary: DoctorSummary & { sectionCount?: number; commandCount?: number };
   sources: AnalyzedInstructionSource[];
+  details?: DoctorDetails;
 };
 
-export async function buildDoctorReport(cwd = process.cwd()): Promise<DoctorReport> {
+export async function buildDoctorReport(
+  cwd = process.cwd(),
+  opts: { details?: boolean } = {},
+): Promise<DoctorReport> {
   const sources = await discoverInstructionSources(cwd);
   const analyzed = await analyzeInstructionSources(sources, cwd);
-  return { command: "doctor", status: "ok", summary: summarize(analyzed), sources: analyzed };
+  const baseSummary = summarize(analyzed);
+
+  if (!opts.details) {
+    return { command: "doctor", status: "ok", summary: baseSummary, sources: analyzed };
+  }
+
+  const allSections: InstructionSection[] = [];
+  const allCommands: CommandRecord[] = [];
+
+  for (const source of analyzed) {
+    let text: string;
+    try {
+      text = await readFile(path.join(cwd, source.path), "utf8");
+    } catch {
+      continue;
+    }
+    const sections = parseSections(source.path, text);
+    const commands = extractCommands(source.path, text, sections);
+    allSections.push(...sections);
+    allCommands.push(...commands);
+  }
+
+  return {
+    command: "doctor",
+    status: "ok",
+    summary: {
+      ...baseSummary,
+      sectionCount: allSections.length,
+      commandCount: allCommands.length,
+    },
+    sources: analyzed,
+    details: { sections: allSections, commands: allCommands },
+  };
 }
 
 export function formatDoctorText(report: DoctorReport): string[] {
@@ -26,6 +70,12 @@ export function formatDoctorText(report: DoctorReport): string[] {
     `Discovered ${summary.sourceCount} instruction source${summary.sourceCount === 1 ? "" : "s"}.`,
     `Estimated instruction surface: ~${summary.estimatedTokens} tokens.`,
   ];
+
+  if (summary.sectionCount !== undefined && summary.commandCount !== undefined) {
+    lines.push(
+      `Parsed ${summary.sectionCount} section${summary.sectionCount === 1 ? "" : "s"}, ${summary.commandCount} command${summary.commandCount === 1 ? "" : "s"}.`,
+    );
+  }
 
   for (const source of report.sources) {
     lines.push(`- ${source.path} [${source.kind}] scope: ${source.scopePath} ~${source.estimatedTokens} tokens`);
@@ -46,8 +96,9 @@ export function createProgram(): Command {
     .command("doctor")
     .description("Inspect instruction files and report waste, conflicts, and risks.")
     .option("--json", "Output JSON")
-    .action(async (options: { json?: boolean }) => {
-      const report = await buildDoctorReport();
+    .option("--details", "Include parsed sections and commands in output")
+    .action(async (options: { json?: boolean; details?: boolean }) => {
+      const report = await buildDoctorReport(process.cwd(), { details: options.details === true });
       if (options.json) {
         console.log(JSON.stringify(report, null, 2));
         return;
