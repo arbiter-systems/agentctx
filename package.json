@@ -1,0 +1,37 @@
+{
+  "name": "agentctx",
+  "version": "0.1.0",
+  "description": "Discover, audit, and streamline AI instruction files for coding agents.",
+  "main": "./dist/cli.js",
+  "type": "module",
+  "bin": {
+    "agentctx": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "node --watch --experimental-strip-types src/cli.ts",
+    "doctor": "npm run build && node dist/cli.js doctor",
+    "test": "vitest run --pool threads",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "fast-glob": "^3.3.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
