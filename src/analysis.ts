@@ -32,6 +32,7 @@ async function analyzeOne(
   source: InstructionSource,
   absolutePath: string,
   cache: Map<string, CacheEntry>,
+  contentByPath: ReadonlyMap<string, string>,
 ): Promise<AnalysisResult> {
   const fallback: AnalysisResult = {
     analyzed: { ...source, bytes: 0, estimatedTokens: 0 },
@@ -55,9 +56,9 @@ async function analyzeOne(
     return { analyzed: { ...source, bytes: cached.bytes, estimatedTokens: cached.estimatedTokens }, entry: null };
   }
 
-  let content: string;
+  let content = contentByPath.get(source.path);
   try {
-    content = await readFile(absolutePath, "utf8");
+    content ??= await readFile(absolutePath, "utf8");
   } catch {
     return fallback;
   }
@@ -78,14 +79,20 @@ async function analyzeOne(
 export async function analyzeInstructionSources(
   sources: InstructionSource[],
   cwd = process.cwd(),
+  contentByPath: ReadonlyMap<string, string> = new Map(),
 ): Promise<AnalyzedInstructionSource[]> {
   const cache = await loadCache(cwd);
 
   const settled = await Promise.all(
-    sources.map((source) => analyzeOne(source, path.join(cwd, source.path), cache)),
+    sources.map((source) =>
+      analyzeOne(source, path.join(cwd, source.path), cache, contentByPath),
+    ),
   );
 
-  const updated = new Map(cache);
+  const currentPaths = new Set(sources.map((source) => source.path));
+  const updated = new Map(
+    [...cache].filter(([cachedPath]) => currentPaths.has(cachedPath)),
+  );
   for (const { entry } of settled) {
     if (entry) updated.set(entry.path, entry);
   }

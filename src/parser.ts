@@ -68,8 +68,15 @@ function parseOpeningFence(line: string): { marker: string; length: number } | n
 }
 
 function isClosingFence(line: string, fence: { marker: string; length: number }): boolean {
-  const closingFence = new RegExp(`^ {0,3}${fence.marker}{${fence.length},}[ \\t]*$`);
-  return closingFence.test(line);
+  let index = 0;
+  while (line[index] === " " && index < 4) index++;
+  if (index > 3) return false;
+
+  let markerCount = 0;
+  while (line[index + markerCount] === fence.marker) markerCount++;
+  if (markerCount < fence.length) return false;
+
+  return line.slice(index + markerCount).trim() === "";
 }
 
 export function parseSections(
@@ -101,7 +108,7 @@ export function parseSections(
   };
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
+    const line = (lines[i] ?? "").replace(/\r$/, "");
     const lineNum = i + 1;
 
     const heading = parseAtxHeading(line);
@@ -143,7 +150,7 @@ export function extractCommands(
   let fenceBuffer: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
+    const line = (lines[i] ?? "").replace(/\r$/, "");
     const lineNum = i + 1;
 
     const openingFence = parseOpeningFence(line);
