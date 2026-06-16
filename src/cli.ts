@@ -9,6 +9,7 @@ import { discoverInstructionSources } from "./discovery.js";
 import { analyzeInstructionSources, summarize, type AnalyzedInstructionSource, type DoctorSummary } from "./analysis.js";
 import { parseSections, extractCommands, type InstructionSection, type CommandRecord } from "./parser.js";
 import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findings.js";
+import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
 
 export type DoctorDetails = {
   sections: InstructionSection[];
@@ -26,6 +27,7 @@ export type DoctorReport = {
   };
   sources: AnalyzedInstructionSource[];
   findings: Finding[];
+  skillMetadata: SkillMetadata[];
   details?: DoctorDetails;
 };
 
@@ -89,6 +91,7 @@ export async function buildDoctorReport(
     summary,
     sources: analyzed,
     findings,
+    skillMetadata: extractAllSkillMetadata(analyzed, sourceContents, findings),
     ...(opts.details
       ? { details: { sections: allSections, commands: allCommands } }
       : {}),
@@ -104,8 +107,16 @@ export function formatDoctorText(report: DoctorReport): string[] {
     `Detected ${summary.findingCount} finding${summary.findingCount === 1 ? "" : "s"}.`,
     `Estimated avoidable waste: ~${summary.estimatedAvoidableTokens} tokens.`,
     ...formatParsedCounts(summary),
+    ...formatSkillMetadataCount(report.skillMetadata),
     ...formatSources(report.sources),
     ...formatFindings(report.findings),
+  ];
+}
+
+function formatSkillMetadataCount(skillMetadata: SkillMetadata[]): string[] {
+  if (skillMetadata.length === 0) return [];
+  return [
+    `Extracted ${skillMetadata.length} skill metadata record${skillMetadata.length === 1 ? "" : "s"}.`,
   ];
 }
 
