@@ -27,42 +27,20 @@ function statusFor(deltaTokens: number): ContextBudgetReport["status"] {
 function opportunityFor(finding: Finding): BudgetSavingsOpportunity | null {
   if (finding.estimatedAvoidableTokens === undefined) return null;
 
-  const opportunity: BudgetSavingsOpportunity = {
+  return {
     code: finding.code,
     sourcePath: finding.sourcePath,
     estimatedAvoidableTokens: finding.estimatedAvoidableTokens,
     message: finding.message,
+    ...(finding.lineStart !== undefined ? { lineStart: finding.lineStart } : {}),
+    ...(finding.lineEnd !== undefined ? { lineEnd: finding.lineEnd } : {}),
   };
-  if (finding.lineStart !== undefined) opportunity.lineStart = finding.lineStart;
-  if (finding.lineEnd !== undefined) opportunity.lineEnd = finding.lineEnd;
-  return opportunity;
 }
 
 function isBudgetSavingsOpportunity(
   opportunity: BudgetSavingsOpportunity | null,
 ): opportunity is BudgetSavingsOpportunity {
   return opportunity !== null;
-}
-
-function insertTopSavings(
-  topSavings: BudgetSavingsOpportunity[],
-  opportunity: BudgetSavingsOpportunity,
-  limit: number,
-): BudgetSavingsOpportunity[] {
-  const next = [...topSavings, opportunity];
-  for (let index = next.length - 1; index > 0; index -= 1) {
-    const current = next[index]!;
-    const previous = next[index - 1]!;
-    if (
-      current.estimatedAvoidableTokens <= previous.estimatedAvoidableTokens
-    ) {
-      break;
-    }
-    next[index - 1] = current;
-    next[index] = previous;
-  }
-
-  return next.length > limit ? next.slice(0, limit) : next;
 }
 
 function topSavingsFromFindings(
@@ -74,11 +52,8 @@ function topSavingsFromFindings(
   return findings
     .map(opportunityFor)
     .filter(isBudgetSavingsOpportunity)
-    .reduce<BudgetSavingsOpportunity[]>(
-      (topSavings, opportunity) =>
-        insertTopSavings(topSavings, opportunity, limit),
-      [],
-    );
+    .sort((a, b) => b.estimatedAvoidableTokens - a.estimatedAvoidableTokens)
+    .slice(0, limit);
 }
 
 export function buildContextBudgetReport(input: {
