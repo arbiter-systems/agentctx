@@ -88,6 +88,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function guidance(index: number): BriefGuidance {
+  return {
+    path: `skills/${index}/SKILL.md`,
+    name: `skill-${index}`,
+    reason: `reason ${index}`,
+    estimatedTokens: 100,
+    reasons: [`reason ${index}`],
+    exclusions: [],
+  };
+}
+
 describe("brief command", () => {
   it("emits a compact task briefing", async () => {
     await withBriefFixture(async (fixtureRoot) => {
@@ -183,17 +194,6 @@ describe("brief command", () => {
 });
 
 describe("brief formatting", () => {
-  function guidance(index: number): BriefGuidance {
-    return {
-      path: `skills/${index}/SKILL.md`,
-      name: `skill-${index}`,
-      reason: `reason ${index}`,
-      estimatedTokens: 100,
-      reasons: [`reason ${index}`],
-      exclusions: [],
-    };
-  }
-
   it("includes selected, excluded, prompt, and avoided-context sections", () => {
     const result: BriefResult = {
       command: "brief",
