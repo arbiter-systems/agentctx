@@ -40,6 +40,12 @@ suggest:
   max_selected_skills: 3
   prefer_low_token_skills: true
   include_full_skill_text: false
+
+display_limits:
+  findings: 10
+  selected_guidance: 3
+  excluded_guidance: 3
+  suggest_excluded: 3
 ```
 
 ## Planned

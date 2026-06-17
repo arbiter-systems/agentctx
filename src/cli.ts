@@ -11,12 +11,12 @@ import { parseSections, extractCommands, type InstructionSection, type CommandRe
 import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findings.js";
 import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
 import { getChangedFiles, filterToInstructionSources, toPosixPath } from "./gitChanged.js";
+import { pluralize, previewItems } from "./formatting.js";
 import {
-  buildCandidates,
-  classifyTask,
+  buildSuggestResultForTask,
   formatSuggestText,
-  selectCandidates,
 } from "./suggest.js";
+import { buildBriefResult, formatBriefText } from "./brief.js";
 import {
   ConfigError,
   loadAgentctxConfig,
@@ -164,7 +164,10 @@ function formatConfigError(err: unknown): string {
   return String(err);
 }
 
-export function formatDoctorText(report: DoctorReport): string[] {
+export function formatDoctorText(
+  report: DoctorReport,
+  opts: { findingsLimit?: number } = {},
+): string[] {
   const { summary, changed } = report;
   const isChanged = changed?.enabled === true;
 
@@ -181,14 +184,14 @@ export function formatDoctorText(report: DoctorReport): string[] {
   }
 
   lines.push(
-    `Discovered ${summary.sourceCount} instruction source${summary.sourceCount === 1 ? "" : "s"}.`,
+    `Discovered ${summary.sourceCount} ${pluralize(summary.sourceCount, "instruction source")}.`,
     `Estimated instruction surface: ~${summary.estimatedTokens} tokens.`,
-    `Detected ${summary.findingCount} finding${summary.findingCount === 1 ? "" : "s"}.`,
+    `Detected ${summary.findingCount} ${pluralize(summary.findingCount, "finding")}.`,
     `Estimated avoidable waste: ~${summary.estimatedAvoidableTokens} tokens.`,
     ...formatParsedCounts(summary),
     ...formatSkillMetadataCount(report.skillMetadata),
     ...formatSources(report.sources),
-    ...formatFindings(report.findings),
+    ...formatFindings(report.findings, opts.findingsLimit),
   );
 
   return lines;
@@ -197,14 +200,14 @@ export function formatDoctorText(report: DoctorReport): string[] {
 function formatSkillMetadataCount(skillMetadata: SkillMetadata[]): string[] {
   if (skillMetadata.length === 0) return [];
   return [
-    `Extracted ${skillMetadata.length} skill metadata record${skillMetadata.length === 1 ? "" : "s"}.`,
+    `Extracted ${skillMetadata.length} ${pluralize(skillMetadata.length, "skill metadata record")}.`,
   ];
 }
 
 function formatParsedCounts(summary: DoctorReport["summary"]): string[] {
   if (summary.sectionCount !== undefined && summary.commandCount !== undefined) {
     return [
-      `Parsed ${summary.sectionCount} section${summary.sectionCount === 1 ? "" : "s"}, ${summary.commandCount} command${summary.commandCount === 1 ? "" : "s"}.`,
+      `Parsed ${summary.sectionCount} ${pluralize(summary.sectionCount, "section")}, ${summary.commandCount} ${pluralize(summary.commandCount, "command")}.`,
     ];
   }
 
@@ -218,18 +221,19 @@ function formatSources(sources: AnalyzedInstructionSource[]): string[] {
   );
 }
 
-function formatFindings(findings: Finding[]): string[] {
+function formatFindings(findings: Finding[], limit = 10): string[] {
   const severityRank = { high: 0, medium: 1, low: 2 };
-  const displayedFindings = [...findings]
-    .sort((left, right) => severityRank[left.severity] - severityRank[right.severity])
-    .slice(0, 10);
+  const { visible: displayedFindings, omittedCount } = previewItems(
+    [...findings].sort((left, right) => severityRank[left.severity] - severityRank[right.severity]),
+    limit,
+  );
 
   if (displayedFindings.length === 0) return [];
 
   return [
     "Findings:",
     ...formatFindingsBySeverity(displayedFindings),
-    ...formatOmittedFindingCount(findings.length, displayedFindings.length),
+    ...formatOmittedFindingCount(omittedCount),
   ];
 }
 
@@ -263,11 +267,10 @@ function formatFindingsBySeverity(findings: Finding[]): string[] {
   return lines;
 }
 
-function formatOmittedFindingCount(total: number, displayed: number): string[] {
-  const omitted = total - displayed;
-  if (omitted <= 0) return [];
+function formatOmittedFindingCount(omittedCount: number): string[] {
+  if (omittedCount <= 0) return [];
 
-  return [`... ${omitted} more finding${omitted === 1 ? "" : "s"} omitted.`];
+  return [`... ${omittedCount} more ${pluralize(omittedCount, "finding")} omitted.`];
 }
 
 export function createProgram(): Command {
@@ -302,7 +305,9 @@ export function createProgram(): Command {
           return;
         }
 
-        for (const line of formatDoctorText(report)) {
+        for (const line of formatDoctorText(report, {
+          findingsLimit: config.display_limits.findings,
+        })) {
           console.log(line);
         }
       } catch (err) {
@@ -320,48 +325,45 @@ export function createProgram(): Command {
       try {
         const cwd = process.cwd();
         const config = await loadAgentctxConfig(cwd);
-        const sources = await discoverInstructionSources(cwd, config.discovery);
-        const sourceContents = new Map(
-          (
-            await Promise.all(
-              sources.map(async (source) => {
-                try {
-                  return [
-                    source.path,
-                    await readFile(path.join(cwd, source.path), "utf8"),
-                  ] as const;
-                } catch {
-                  return null;
-                }
-              }),
-            )
-          ).filter((entry): entry is readonly [string, string] => entry !== null),
-        );
-        const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
-        const findings = detectFindings({
-          sources: analyzed,
-          sections: [],
-          commands: [],
-        }, {
-          tokenThresholds: config.doctor.token_thresholds,
-        });
-        const skillMetadata = extractAllSkillMetadata(analyzed, sourceContents, findings);
-        const candidates = buildCandidates(skillMetadata);
-        const classified = classifyTask(task);
-        const result = selectCandidates(candidates, classified, {
-          defaultBranch: config.suggest.default_branch,
-          maxPromptTokens: config.suggest.max_prompt_tokens,
-          maxSelectedSkills: config.suggest.max_selected_skills,
-          preferLowTokenSkills: config.suggest.prefer_low_token_skills,
-          includeFullSkillText: config.suggest.include_full_skill_text,
-        });
+        const result = await buildSuggestResultForTask(cwd, task, config);
 
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
           return;
         }
 
-        for (const line of formatSuggestText(result)) {
+        for (const line of formatSuggestText(result, {
+          excludedLimit: config.display_limits.suggest_excluded,
+        })) {
+          console.log(line);
+        }
+      } catch (err) {
+        process.exitCode = 2;
+        console.error(formatConfigError(err));
+      }
+    });
+
+  program
+    .command("brief")
+    .description("Build a compact task briefing for a coding agent.")
+    .argument("<task>", "Task description to brief")
+    .option("--json", "Output JSON")
+    .action(async (task: string, options: { json?: boolean }) => {
+      try {
+        const cwd = process.cwd();
+        const config = await loadAgentctxConfig(cwd);
+        const suggestResult = await buildSuggestResultForTask(cwd, task, config);
+        const result = buildBriefResult(suggestResult);
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        for (const line of formatBriefText(result, {
+          selectedLimit: config.display_limits.selected_guidance,
+          excludedLimit: config.display_limits.excluded_guidance,
+        })) {
           console.log(line);
         }
       } catch (err) {
