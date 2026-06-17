@@ -24,6 +24,24 @@ export function summarize(sources: AnalyzedInstructionSource[]): DoctorSummary {
   };
 }
 
+export function analyzeInstructionSourcesInMemory(
+  sources: InstructionSource[],
+  contentByPath: ReadonlyMap<string, string>,
+): AnalyzedInstructionSource[] {
+  return sources.map((source) => {
+    const content = contentByPath.get(source.path);
+    if (content === undefined) {
+      return { ...source, bytes: 0, estimatedTokens: 0 };
+    }
+
+    return {
+      ...source,
+      bytes: Buffer.byteLength(content),
+      estimatedTokens: estimateTokens(content),
+    };
+  });
+}
+
 type AnalysisResult = {
   analyzed: AnalyzedInstructionSource;
   entry: CacheEntry | null;

@@ -48,7 +48,7 @@ export function buildBriefResult(
   suggestResult: SuggestResult,
   opts: { budget?: ContextBudgetReport } = {},
 ): BriefResult {
-  return {
+  const result: BriefResult = {
     command: "brief",
     task: suggestResult.input,
     selectedGuidance: suggestResult.selected.map(toBriefGuidance),
@@ -56,8 +56,11 @@ export function buildBriefResult(
     prompt: suggestResult.prompt,
     route: suggestResult.route,
     estimatedAvoidedContext: suggestResult.estimatedAvoidedContext,
-    ...(opts.budget === undefined ? {} : { budget: opts.budget }),
   };
+  if (opts.budget !== undefined) {
+    result.budget = opts.budget;
+  }
+  return result;
 }
 
 function formatGuidance(
