@@ -3,7 +3,14 @@
 instructov discovers and audits AI instruction files like AGENTS.md, CLAUDE.md, Copilot instructions, and SKILL.md to reduce token waste and conflicting guidance.
 
 ## MVP
-- `instructov doctor`
+- `agentctx doctor`
+- `agentctx doctor --diff <ref>`
+
+Compare instruction impact before merging:
+
+```bash
+agentctx doctor --diff dev
+```
 
 ## Configuration
 
