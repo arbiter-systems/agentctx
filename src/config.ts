@@ -32,11 +32,19 @@ const suggestSchema = z.object({
   include_full_skill_text: z.boolean().optional(),
 }).strict();
 
+const displayLimitsSchema = z.object({
+  findings: positiveInteger.optional(),
+  selected_guidance: positiveInteger.optional(),
+  excluded_guidance: positiveInteger.optional(),
+  suggest_excluded: positiveInteger.optional(),
+}).strict();
+
 const configSchema = z.object({
   version: z.literal("v0alpha1"),
   discovery: discoverySchema.optional(),
   doctor: doctorSchema.optional(),
   suggest: suggestSchema.optional(),
+  display_limits: displayLimitsSchema.optional(),
 }).strict();
 
 export type AgentctxConfig = {
@@ -59,6 +67,12 @@ export type AgentctxConfig = {
     max_selected_skills: number;
     prefer_low_token_skills: boolean;
     include_full_skill_text: false;
+  };
+  display_limits: {
+    findings: number;
+    selected_guidance: number;
+    excluded_guidance: number;
+    suggest_excluded: number;
   };
 };
 
@@ -106,6 +120,12 @@ export const DEFAULT_AGENTCTX_CONFIG: AgentctxConfig = {
     prefer_low_token_skills: true,
     include_full_skill_text: false,
   },
+  display_limits: {
+    findings: 10,
+    selected_guidance: 3,
+    excluded_guidance: 3,
+    suggest_excluded: 3,
+  },
 };
 
 type ParsedLine = {
@@ -131,6 +151,7 @@ function cloneDefaultConfig(): AgentctxConfig {
       fail_on: [...DEFAULT_AGENTCTX_CONFIG.doctor.fail_on],
     },
     suggest: { ...DEFAULT_AGENTCTX_CONFIG.suggest },
+    display_limits: { ...DEFAULT_AGENTCTX_CONFIG.display_limits },
   };
 }
 
@@ -285,45 +306,68 @@ function validateConfig(parsed: unknown): PartialConfig {
   return result.data;
 }
 
+type AssignRule<
+  TSource extends object,
+  TTarget extends object,
+  TKey extends keyof TSource & keyof TTarget,
+> = readonly [
+  TKey,
+  ((value: NonNullable<TSource[TKey]>) => TTarget[TKey])?,
+];
+
+function assignDefined<
+  TSource extends object,
+  TTarget extends object,
+  TKey extends keyof TSource & keyof TTarget,
+>(
+  source: TSource | undefined,
+  target: TTarget,
+  rules: readonly AssignRule<TSource, TTarget, TKey>[],
+): void {
+  if (source === undefined) return;
+
+  for (const [key, map] of rules) {
+    const value = source[key];
+    if (value === undefined) continue;
+    target[key] = map
+      ? map(value as NonNullable<TSource[TKey]>)
+      : (value as unknown as TTarget[TKey]);
+  }
+}
+
 function mergeConfig(partial: PartialConfig): AgentctxConfig {
   const merged = cloneDefaultConfig();
 
-  if (partial.discovery?.include !== undefined) {
-    merged.discovery.include = [...partial.discovery.include];
-  }
-  if (partial.discovery?.exclude !== undefined) {
-    merged.discovery.exclude = [...partial.discovery.exclude];
-  }
+  assignDefined(partial.discovery, merged.discovery, [
+    ["include", (value) => [...value]],
+    ["exclude", (value) => [...value]],
+  ]);
+
   if (partial.doctor?.token_thresholds !== undefined) {
-    const thresholds = partial.doctor.token_thresholds;
-    if (thresholds.source_warning !== undefined) {
-      merged.doctor.token_thresholds.source_warning = thresholds.source_warning;
-    }
-    if (thresholds.source_high !== undefined) {
-      merged.doctor.token_thresholds.source_high = thresholds.source_high;
-    }
-    if (thresholds.section_warning !== undefined) {
-      merged.doctor.token_thresholds.section_warning = thresholds.section_warning;
-    }
+    assignDefined(partial.doctor.token_thresholds, merged.doctor.token_thresholds, [
+      ["source_warning"],
+      ["source_high"],
+      ["section_warning"],
+    ]);
   }
   if (partial.doctor?.fail_on !== undefined) {
     merged.doctor.fail_on = [...partial.doctor.fail_on];
   }
   if (partial.suggest !== undefined) {
-    if (partial.suggest.default_branch !== undefined) {
-      merged.suggest.default_branch = partial.suggest.default_branch;
-    }
-    if (partial.suggest.max_prompt_tokens !== undefined) {
-      merged.suggest.max_prompt_tokens = partial.suggest.max_prompt_tokens;
-    }
-    if (partial.suggest.max_selected_skills !== undefined) {
-      merged.suggest.max_selected_skills = partial.suggest.max_selected_skills;
-    }
-    if (partial.suggest.prefer_low_token_skills !== undefined) {
-      merged.suggest.prefer_low_token_skills = partial.suggest.prefer_low_token_skills;
-    }
+    assignDefined(partial.suggest, merged.suggest, [
+      ["default_branch"],
+      ["max_prompt_tokens"],
+      ["max_selected_skills"],
+      ["prefer_low_token_skills"],
+    ]);
     merged.suggest.include_full_skill_text = false;
   }
+  assignDefined(partial.display_limits, merged.display_limits, [
+    ["findings"],
+    ["selected_guidance"],
+    ["excluded_guidance"],
+    ["suggest_excluded"],
+  ]);
 
   return merged;
 }

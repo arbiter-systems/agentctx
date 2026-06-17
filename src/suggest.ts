@@ -6,6 +6,7 @@ import type { AgentctxConfig } from "./config.js";
 import { loadAgentctxConfig } from "./config.js";
 import { discoverInstructionSources } from "./discovery.js";
 import { detectFindings } from "./findings.js";
+import { pluralize, previewItems, sumTokens } from "./formatting.js";
 import type { SkillMetadata, SkillPenalty } from "./skillMetadata.js";
 import { extractAllSkillMetadata } from "./skillMetadata.js";
 import { estimateTokens } from "./tokenEstimate.js";
@@ -395,8 +396,8 @@ function computeAvoidedContext(
   selected: ScoredSuggestCandidate[],
   excluded: ScoredSuggestCandidate[],
 ): EstimatedAvoidedContext {
-  const selectedTokens = selected.reduce((sum, c) => sum + c.estimatedTokens, 0);
-  const excludedTokens = excluded.reduce((sum, c) => sum + c.estimatedTokens, 0);
+  const selectedTokens = sumTokens(selected);
+  const excludedTokens = sumTokens(excluded);
   return { selectedTokens, excludedTokens, estimatedAvoidedTokens: excludedTokens };
 }
 
@@ -549,30 +550,33 @@ function formatSelected(selected: ScoredSuggestCandidate[]): string[] {
   return lines;
 }
 
-function formatExcluded(excluded: ScoredSuggestCandidate[]): string[] {
+function formatExcluded(excluded: ScoredSuggestCandidate[], limit = 3): string[] {
   if (excluded.length === 0) return [];
 
   const count = excluded.length;
-  const label = count === 1 ? "candidate" : "candidates";
-  const lines: string[] = [`Excluded: ${count} ${label}`];
+  const lines: string[] = [`Excluded: ${count} ${pluralize(count, "candidate")}`];
+  const { visible, omittedCount } = previewItems(excluded, limit);
 
-  for (const c of excluded.slice(0, 3)) {
+  for (const c of visible) {
     const note = c.exclusions.length > 0 ? ` — ${c.exclusions[0]}` : "";
     lines.push(`  ${c.name} [score: ${c.score}]${note}`);
   }
-  if (count > 3) lines.push(`  ... ${count - 3} more`);
+  if (omittedCount > 0) lines.push(`  ... ${omittedCount} more`);
 
   return lines;
 }
 
-export function formatSuggestText(result: SuggestResult): string[] {
+export function formatSuggestText(
+  result: SuggestResult,
+  opts: { excludedLimit?: number } = {},
+): string[] {
   const { estimatedAvoidedContext: ctx } = result;
   return [
     `agentctx suggest "${result.input}"`,
     `Task category: ${result.classification.primaryCategory}`,
     "",
     ...formatSelected(result.selected),
-    ...formatExcluded(result.excluded),
+    ...formatExcluded(result.excluded, opts.excludedLimit),
     "",
     "Suggested prompt:",
     ...result.prompt.split("\n").map((l) => `  ${l}`),

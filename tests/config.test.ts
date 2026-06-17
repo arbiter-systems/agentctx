@@ -43,6 +43,8 @@ describe("loadAgentctxConfig", () => {
         "    source_warning: 100",
         "suggest:",
         "  max_selected_skills: 2",
+        "display_limits:",
+        "  excluded_guidance: 2",
         "",
       ].join("\n"),
       async (fixtureRoot) => {
@@ -55,6 +57,10 @@ describe("loadAgentctxConfig", () => {
         expect(config.suggest.max_prompt_tokens).toBe(
           DEFAULT_AGENTCTX_CONFIG.suggest.max_prompt_tokens,
         );
+        expect(config.display_limits).toEqual({
+          ...DEFAULT_AGENTCTX_CONFIG.display_limits,
+          excluded_guidance: 2,
+        });
       },
     );
   });

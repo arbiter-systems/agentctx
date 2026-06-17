@@ -209,7 +209,10 @@ describe("brief formatting", () => {
       },
     };
 
-    const output = formatBriefText(result).join("\n");
+    const output = formatBriefText(result, {
+      selectedLimit: 2,
+      excludedLimit: 2,
+    }).join("\n");
 
     expect(output).toContain("Selected guidance:");
     expect(output).toContain("Excluded guidance:");
@@ -232,7 +235,10 @@ describe("brief formatting", () => {
       },
     };
 
-    const output = formatBriefText(result).join("\n");
+    const output = formatBriefText(result, {
+      selectedLimit: 2,
+      excludedLimit: 2,
+    }).join("\n");
 
     expect(output).toContain("skills/3/SKILL.md");
     expect(output).toContain("skills/4/SKILL.md");

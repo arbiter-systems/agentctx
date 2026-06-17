@@ -3,6 +3,7 @@ import type {
   ScoredSuggestCandidate,
   SuggestResult,
 } from "./suggest.js";
+import { previewItems } from "./formatting.js";
 
 export type BriefGuidance = {
   path: string;
@@ -59,18 +60,21 @@ function formatGuidance(
 ): string[] {
   if (guidance.length === 0) return [emptyMessage];
 
-  const visible = guidance.slice(0, limit).map(
+  const { visible, omittedCount } = previewItems(guidance, limit);
+  const lines = visible.map(
     (item) => `- ${item.path} - ${item.reason}`,
   );
-  const omitted = guidance.length - visible.length;
-  return omitted > 0
-    ? [...visible, `... ${omitted} more omitted.`]
-    : visible;
+  return omittedCount > 0
+    ? [...lines, `... ${omittedCount} more omitted.`]
+    : lines;
 }
 
-export function formatBriefText(result: BriefResult): string[] {
-  const selectedLimit = Math.max(1, result.selectedGuidance.length);
-  const excludedLimit = Math.max(1, Math.min(3, selectedLimit));
+export function formatBriefText(
+  result: BriefResult,
+  opts: { selectedLimit?: number; excludedLimit?: number } = {},
+): string[] {
+  const selectedLimit = opts.selectedLimit ?? 3;
+  const excludedLimit = opts.excludedLimit ?? 3;
 
   return [
     "Task briefing",
