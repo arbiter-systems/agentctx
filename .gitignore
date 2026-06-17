@@ -151,3 +151,4 @@ vite.config.ts.timestamp-*
 .agentctx/cache.json
 .agentctx/tmp/
 .agentctx/*.log
+.claude/settings.json
