@@ -4,6 +4,13 @@ agentctx discovers and audits AI instruction files like AGENTS.md, CLAUDE.md, Co
 
 ## MVP
 - `agentctx doctor`
+- `agentctx doctor --diff <ref>`
+
+Compare instruction impact before merging:
+
+```bash
+agentctx doctor --diff dev
+```
 
 ## Configuration
 

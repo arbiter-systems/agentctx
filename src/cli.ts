@@ -5,12 +5,25 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { discoverInstructionSources } from "./discovery.js";
-import { analyzeInstructionSources, summarize, type AnalyzedInstructionSource, type DoctorSummary } from "./analysis.js";
+import { discoverInstructionSources, type InstructionSource } from "./discovery.js";
+import {
+  analyzeInstructionSources,
+  analyzeInstructionSourcesInMemory,
+  summarize,
+  type AnalyzedInstructionSource,
+  type DoctorSummary,
+} from "./analysis.js";
 import { parseSections, extractCommands, type InstructionSection, type CommandRecord } from "./parser.js";
-import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findings.js";
+import {
+  detectFindings,
+  summarizeAvoidableTokens,
+  type Finding,
+  type FindingCode,
+  type FindingSeverity,
+} from "./findings.js";
 import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
 import { getChangedFiles, filterToInstructionSources, toPosixPath } from "./gitChanged.js";
+import { getInstructionDiffComparison, readGitFile } from "./gitDiff.js";
 import { optionalBlock, pluralize, previewItems } from "./formatting.js";
 import {
   buildContextBudgetReport,
@@ -34,6 +47,22 @@ export type DoctorDetails = {
   commands: CommandRecord[];
 };
 
+export type FindingCounts = Record<FindingSeverity, Partial<Record<FindingCode, number>>>;
+
+export type DoctorDiffReport = {
+  enabled: true;
+  comparedRef: string;
+  changedFiles: string[];
+  changedInstructionFiles: string[];
+  tokenDelta: number;
+  currentEstimatedTokens: number;
+  baselineEstimatedTokens: number;
+  newFindings: Finding[];
+  resolvedFindings: Finding[];
+  newFindingCounts: FindingCounts;
+  resolvedFindingCounts: FindingCounts;
+};
+
 export type DoctorReport = {
   command: "doctor";
   status: "ok";
@@ -48,6 +77,7 @@ export type DoctorReport = {
   skillMetadata: SkillMetadata[];
   details?: DoctorDetails;
   budget?: ContextBudgetReport;
+  diff?: DoctorDiffReport;
   changed?: {
     enabled: boolean;
     changedFiles: string[];
@@ -55,16 +85,274 @@ export type DoctorReport = {
   };
 };
 
+type DoctorSnapshot = {
+  summary: DoctorSummary & {
+    sectionCount?: number;
+    commandCount?: number;
+    findingCount: number;
+    estimatedAvoidableTokens: number;
+  };
+  sources: AnalyzedInstructionSource[];
+  findings: Finding[];
+  skillMetadata: SkillMetadata[];
+  details?: DoctorDetails;
+  sourceContents: ReadonlyMap<string, string>;
+};
+
+async function readSourceContents(
+  cwd: string,
+  sources: Array<{ path: string }>,
+): Promise<Map<string, string>> {
+  return new Map(
+    (
+      await Promise.all(
+        sources.map(async (source) => {
+          try {
+            return [
+              source.path,
+              await readFile(path.join(cwd, source.path), "utf8"),
+            ] as const;
+          } catch {
+            return null;
+          }
+        }),
+      )
+    ).filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+}
+
+function buildSnapshotFromAnalysis(
+  analyzed: AnalyzedInstructionSource[],
+  sourceContents: ReadonlyMap<string, string>,
+  config: AgentctxConfig,
+  opts: { details?: boolean } = {},
+): DoctorSnapshot {
+  const baseSummary = summarize(analyzed);
+  const parsedSections: InstructionSection[] = [];
+  const parsedCommands: CommandRecord[] = [];
+
+  for (const source of analyzed) {
+    const text = sourceContents.get(source.path);
+    if (text === undefined) continue;
+
+    const sections = parseSections(source.path, text);
+    const commands = extractCommands(source.path, text, sections);
+    parsedSections.push(...sections);
+    parsedCommands.push(...commands);
+  }
+
+  const findings = detectFindings({
+    sources: analyzed,
+    sections: parsedSections,
+    commands: parsedCommands,
+  }, {
+    tokenThresholds: config.doctor.token_thresholds,
+  });
+  const summary: DoctorReport["summary"] = {
+    ...baseSummary,
+    findingCount: findings.length,
+    estimatedAvoidableTokens: summarizeAvoidableTokens(findings),
+  };
+
+  if (opts.details) {
+    summary.sectionCount = parsedSections.length;
+    summary.commandCount = parsedCommands.length;
+  }
+
+  const snapshot: DoctorSnapshot = {
+    summary,
+    sources: analyzed,
+    findings,
+    skillMetadata: extractAllSkillMetadata(analyzed, new Map(sourceContents), findings),
+    sourceContents,
+  };
+
+  if (opts.details) {
+    snapshot.details = { sections: parsedSections, commands: parsedCommands };
+  }
+
+  return snapshot;
+}
+
+async function buildCurrentDoctorSnapshot(
+  cwd: string,
+  sources: InstructionSource[],
+  config: AgentctxConfig,
+  opts: { details?: boolean } = {},
+): Promise<DoctorSnapshot> {
+  const sourceContents = await readSourceContents(cwd, sources);
+  const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
+  return buildSnapshotFromAnalysis(analyzed, sourceContents, config, opts);
+}
+
+function emptySnapshot(): DoctorSnapshot {
+  return {
+    summary: {
+      sourceCount: 0,
+      bytes: 0,
+      estimatedTokens: 0,
+      findingCount: 0,
+      estimatedAvoidableTokens: 0,
+    },
+    sources: [],
+    findings: [],
+    skillMetadata: [],
+    sourceContents: new Map(),
+  };
+}
+
+async function buildBaselineDoctorSnapshot(
+  cwd: string,
+  sources: InstructionSource[],
+  baselineRef: string,
+  config: AgentctxConfig,
+): Promise<DoctorSnapshot> {
+  const entries = await Promise.all(
+    sources.map(async (source) => {
+      const content = await readGitFile(cwd, baselineRef, source.path);
+      return content === undefined ? null : [source.path, content] as const;
+    }),
+  );
+  const sourceContents = new Map(
+    entries.filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+  const baselineSources = sources.filter((source) => sourceContents.has(source.path));
+  const analyzed = analyzeInstructionSourcesInMemory(baselineSources, sourceContents);
+  return buildSnapshotFromAnalysis(analyzed, sourceContents, config);
+}
+
+function findingIdentity(finding: Finding): string {
+  return JSON.stringify({
+    code: finding.code,
+    severity: finding.severity,
+    sourcePath: finding.sourcePath,
+    message: finding.message,
+    relatedSources: [...(finding.relatedSources ?? [])].sort((left, right) =>
+      `${left.sourcePath}:${left.lineStart ?? ""}:${left.lineEnd ?? ""}`.localeCompare(
+        `${right.sourcePath}:${right.lineStart ?? ""}:${right.lineEnd ?? ""}`,
+        "en",
+      ),
+    ),
+  });
+}
+
+function diffFindings(
+  current: Finding[],
+  baseline: Finding[],
+): { newFindings: Finding[]; resolvedFindings: Finding[] } {
+  const baselineCounts = new Map<string, number>();
+  const currentCounts = new Map<string, number>();
+
+  for (const finding of baseline) {
+    const identity = findingIdentity(finding);
+    baselineCounts.set(identity, (baselineCounts.get(identity) ?? 0) + 1);
+  }
+
+  for (const finding of current) {
+    const identity = findingIdentity(finding);
+    currentCounts.set(identity, (currentCounts.get(identity) ?? 0) + 1);
+  }
+
+  const newFindings: Finding[] = [];
+  for (const finding of current) {
+    const identity = findingIdentity(finding);
+    const count = baselineCounts.get(identity) ?? 0;
+    if (count > 0) {
+      baselineCounts.set(identity, count - 1);
+    } else {
+      newFindings.push(finding);
+    }
+  }
+
+  const resolvedFindings: Finding[] = [];
+  for (const finding of baseline) {
+    const identity = findingIdentity(finding);
+    const count = currentCounts.get(identity) ?? 0;
+    if (count > 0) {
+      currentCounts.set(identity, count - 1);
+    } else {
+      resolvedFindings.push(finding);
+    }
+  }
+
+  return { newFindings, resolvedFindings };
+}
+
+function emptyFindingCounts(): FindingCounts {
+  return { high: {}, medium: {}, low: {} };
+}
+
+function countFindings(findings: Finding[]): FindingCounts {
+  const counts = emptyFindingCounts();
+  for (const finding of findings) {
+    const severityCounts = counts[finding.severity];
+    severityCounts[finding.code] = (severityCounts[finding.code] ?? 0) + 1;
+  }
+  return counts;
+}
+
+async function buildDoctorDiffReport(
+  cwd: string,
+  comparedRef: string,
+  sources: InstructionSource[],
+  currentSnapshot: DoctorSnapshot,
+  config: AgentctxConfig,
+): Promise<DoctorDiffReport> {
+  const comparison = await getInstructionDiffComparison(cwd, comparedRef);
+  const changedInstructionFiles = filterToInstructionSources(
+    comparison.changedFiles,
+    sources,
+  );
+  const changedSet = new Set(changedInstructionFiles);
+  const diffSources = sources.filter((source) => changedSet.has(toPosixPath(source.path)));
+  const isEmpty = diffSources.length === 0;
+  const currentDiffSnapshot = isEmpty
+    ? emptySnapshot()
+    : buildSnapshotFromAnalysis(
+        currentSnapshot.sources.filter((source) => changedSet.has(toPosixPath(source.path))),
+        currentSnapshot.sourceContents,
+        config,
+      );
+  const baselineSnapshot = isEmpty
+    ? emptySnapshot()
+    : await buildBaselineDoctorSnapshot(cwd, diffSources, comparison.baselineRef, config);
+  const { newFindings, resolvedFindings } = diffFindings(
+    currentDiffSnapshot.findings,
+    baselineSnapshot.findings,
+  );
+
+  return {
+    enabled: true,
+    comparedRef: comparison.comparedRef,
+    changedFiles: comparison.changedFiles,
+    changedInstructionFiles,
+    tokenDelta:
+      currentDiffSnapshot.summary.estimatedTokens -
+      baselineSnapshot.summary.estimatedTokens,
+    currentEstimatedTokens: currentDiffSnapshot.summary.estimatedTokens,
+    baselineEstimatedTokens: baselineSnapshot.summary.estimatedTokens,
+    newFindings,
+    resolvedFindings,
+    newFindingCounts: countFindings(newFindings),
+    resolvedFindingCounts: countFindings(resolvedFindings),
+  };
+}
+
 export async function buildDoctorReport(
   cwd = process.cwd(),
   opts: {
     details?: boolean;
     changed?: boolean;
+    diffRef?: string;
     config?: AgentctxConfig;
     budgetTokens?: number;
   } = {},
 ): Promise<DoctorReport> {
   const config = opts.config ?? await loadAgentctxConfig(cwd);
+  if (opts.changed && opts.diffRef !== undefined) {
+    throw new ConfigError("--changed cannot be used with --diff.");
+  }
+
   const allSources = await discoverInstructionSources(cwd, config.discovery);
 
   let changedMeta: DoctorReport["changed"] | undefined;
@@ -105,79 +393,47 @@ export async function buildDoctorReport(
     sources = allSources.filter((s) => changedSet.has(toPosixPath(s.path)));
   }
 
-  const sourceContents = new Map(
-    (
-      await Promise.all(
-        sources.map(async (source) => {
-          try {
-            return [
-              source.path,
-              await readFile(path.join(cwd, source.path), "utf8"),
-            ] as const;
-          } catch {
-            return null;
-          }
-        }),
-      )
-    ).filter((entry): entry is readonly [string, string] => entry !== null),
+  const snapshot = await buildCurrentDoctorSnapshot(
+    cwd,
+    sources,
+    config,
+    opts.details === undefined ? {} : { details: opts.details },
   );
-  const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
-  const baseSummary = summarize(analyzed);
+  const diff = opts.diffRef === undefined
+    ? undefined
+    : await buildDoctorDiffReport(cwd, opts.diffRef, allSources, snapshot, config);
 
-  const parsedSections: InstructionSection[] = [];
-  const parsedCommands: CommandRecord[] = [];
-
-  for (const source of analyzed) {
-    const text = sourceContents.get(source.path);
-    if (text === undefined) continue;
-
-    const sections = parseSections(source.path, text);
-    const commands = extractCommands(source.path, text, sections);
-    parsedSections.push(...sections);
-    parsedCommands.push(...commands);
-  }
-
-  const findings = detectFindings({
-    sources: analyzed,
-    sections: parsedSections,
-    commands: parsedCommands,
-  }, {
-    tokenThresholds: config.doctor.token_thresholds,
-  });
-  const summary = {
-    ...baseSummary,
-    findingCount: findings.length,
-    estimatedAvoidableTokens: summarizeAvoidableTokens(findings),
-    ...(opts.details
-      ? {
-          sectionCount: parsedSections.length,
-          commandCount: parsedCommands.length,
-        }
-      : {}),
-  };
-
-  return {
+  const report: DoctorReport = {
     command: "doctor",
     status: "ok",
-    summary,
-    sources: analyzed,
-    findings,
-    skillMetadata: extractAllSkillMetadata(analyzed, sourceContents, findings),
-    ...(opts.details
-      ? { details: { sections: parsedSections, commands: parsedCommands } }
-      : {}),
-    ...(opts.budgetTokens === undefined
-      ? {}
-      : {
-          budget: buildContextBudgetReport({
-            tokens: opts.budgetTokens,
-            estimatedTokens: summary.estimatedTokens,
-            findings,
-            savingsLimit: config.display_limits.findings,
-          }),
-        }),
-    ...(changedMeta === undefined ? {} : { changed: changedMeta }),
+    summary: snapshot.summary,
+    sources: snapshot.sources,
+    findings: snapshot.findings,
+    skillMetadata: snapshot.skillMetadata,
   };
+
+  if (snapshot.details !== undefined) {
+    report.details = snapshot.details;
+  }
+
+  if (opts.budgetTokens !== undefined) {
+    report.budget = buildContextBudgetReport({
+      tokens: opts.budgetTokens,
+      estimatedTokens: snapshot.summary.estimatedTokens,
+      findings: snapshot.findings,
+      savingsLimit: config.display_limits.findings,
+    });
+  }
+
+  if (diff !== undefined) {
+    report.diff = diff;
+  }
+
+  if (changedMeta !== undefined) {
+    report.changed = changedMeta;
+  }
+
+  return report;
 }
 
 function shouldFailDoctor(
@@ -190,6 +446,7 @@ function shouldFailDoctor(
 
 function formatConfigError(err: unknown): string {
   if (err instanceof ConfigError) return err.message;
+  if (err instanceof Error) return err.message;
   return String(err);
 }
 
@@ -204,6 +461,8 @@ export function formatDoctorText(
   report: DoctorReport,
   opts: { findingsLimit?: number } = {},
 ): string[] {
+  if (report.diff?.enabled) return formatDoctorDiffText(report.diff);
+
   const { summary, changed } = report;
   const isChanged = changed?.enabled === true;
 
@@ -232,6 +491,45 @@ export function formatDoctorText(
   );
 
   return lines;
+}
+
+function formatSignedTokenDelta(tokenDelta: number): string {
+  const sign = tokenDelta >= 0 ? "+" : "-";
+  return `${sign}${Math.abs(tokenDelta).toLocaleString("en-US")}`;
+}
+
+function hasInstructionImpact(diff: DoctorDiffReport): boolean {
+  return diff.changedInstructionFiles.length > 0 ||
+    diff.tokenDelta !== 0 ||
+    diff.newFindings.length > 0 ||
+    diff.resolvedFindings.length > 0;
+}
+
+function formatDoctorDiffText(diff: DoctorDiffReport): string[] {
+  const lines = [
+    "Instruction Impact Analysis",
+    "",
+    `Compared against: ${diff.comparedRef}`,
+    `Instruction token delta: ${formatSignedTokenDelta(diff.tokenDelta)} estimated tokens`,
+    `Changed instruction sources: ${diff.changedInstructionFiles.length}`,
+  ];
+
+  if (!hasInstructionImpact(diff)) {
+    return [...lines, "No changes detected."];
+  }
+
+  return [
+    ...lines,
+    "",
+    ...formatDiffFindingSection("New findings:", diff.newFindings),
+    "",
+    ...formatDiffFindingSection("Resolved findings:", diff.resolvedFindings),
+  ];
+}
+
+function formatDiffFindingSection(label: string, findings: Finding[]): string[] {
+  if (findings.length === 0) return [label, "None."];
+  return [label, ...formatFindingsBySeverity(findings)];
 }
 
 function formatSkillMetadataCount(skillMetadata: SkillMetadata[]): string[] {
@@ -324,11 +622,13 @@ export function createProgram(): Command {
     .option("--json", "Output JSON")
     .option("--details", "Include parsed sections and commands in output")
     .option("--changed", "Analyze only instruction sources changed in the working tree")
+    .option("--diff <ref>", "Compare instruction impact against a git ref")
     .option("--budget <tokens>", "Approximate context budget in tokens")
     .action(async (options: {
       json?: boolean;
       details?: boolean;
       changed?: boolean;
+      diff?: string;
       budget?: string;
     }) => {
       try {
@@ -339,6 +639,7 @@ export function createProgram(): Command {
         const report = await buildDoctorReport(process.cwd(), {
           details: options.details === true,
           changed: options.changed === true,
+          ...(options.diff === undefined ? {} : { diffRef: options.diff }),
           config,
           ...(budgetTokens === undefined ? {} : { budgetTokens }),
         });
