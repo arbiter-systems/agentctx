@@ -34,7 +34,7 @@ export async function getChangedFiles(cwd: string): Promise<string[]> {
     for (const p of await gitLines(["ls-files", "--others", "--modified", "--exclude-standard"], cwd)) {
       results.add(p);
     }
-    return [...results].sort();
+    return [...results].sort((a, b) => a.localeCompare(b));
   }
 
   try {
@@ -45,7 +45,7 @@ export async function getChangedFiles(cwd: string): Promise<string[]> {
     // non-fatal when HEAD is available
   }
 
-  return [...results].sort();
+  return [...results].sort((a, b) => a.localeCompare(b));
 }
 
 export function filterToInstructionSources(

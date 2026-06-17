@@ -159,7 +159,7 @@ function prepareLines(text: string): ParsedLine[] {
     const withoutComments = stripComment(rawLine);
     if (withoutComments.trim() === "") return [];
 
-    const indent = withoutComments.match(/^ */)?.[0].length ?? 0;
+    const indent = new RegExp(/^ */).exec(withoutComments)?.[0].length ?? 0;
     if (indent % 2 !== 0) {
       throw new ConfigError(`Invalid ${CONFIG_FILE_NAME}: indentation must use two spaces at line ${index + 1}.`);
     }
@@ -179,7 +179,7 @@ function parseScalar(value: string, lineNumber: number): string | number | boole
   ) {
     return trimmed.slice(1, -1);
   }
-  if (trimmed === "" || /[\[\]{}&,*!|>]/.test(trimmed)) {
+  if (trimmed === "" || /[[\]{}&,*!|>]/.test(trimmed)) {
     throw new ConfigError(`Invalid ${CONFIG_FILE_NAME}: unsupported scalar at line ${lineNumber}.`);
   }
   return trimmed;
