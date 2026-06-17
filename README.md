@@ -1,10 +1,36 @@
-# instructov
+# Instructov
 
-instructov discovers and audits AI instruction files like AGENTS.md, CLAUDE.md, Copilot instructions, and SKILL.md to reduce token waste and conflicting guidance.
+Instructov audits and streamlines AI coding-agent instructions before they enter the prompt.
 
-## MVP
-- `instructov doctor`
-- `instructov doctor --diff <ref>`
+It discovers repo guidance such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, and `**/SKILL.md`, then helps developers find bloated, duplicated, stale, risky, or conflicting guidance without making network calls, LLM calls, or automatic rewrites.
+
+## Core workflow
+
+Use `doctor` to inspect instruction debt:
+
+```bash
+instructov doctor
+```
+
+Use `suggest` to inspect deterministic routing for a task:
+
+```bash
+instructov suggest "review PR 31"
+```
+
+Use `brief` to produce a compact task prompt/loadout without dumping every instruction file into context:
+
+```bash
+instructov brief "review PR 31 for security and test gaps"
+```
+
+## Context budget and branch impact
+
+Show approximate instruction-context pressure:
+
+```bash
+instructov doctor --budget 4000
+```
 
 Compare instruction impact before merging:
 
@@ -55,9 +81,28 @@ display_limits:
   suggest_excluded: 3
 ```
 
+## Legacy migration
+
+The repo was previously named `agentctx`. New docs and examples should use `Instructov` and `instructov`.
+
+Implementation may keep compatibility for legacy `agentctx.yml` and `.agentctx/` paths while new projects move to `instructov.yml` and `.instructov/`.
+
+## Constraints
+
+- Local only.
+- Deterministic.
+- No network calls.
+- No LLM calls.
+- No automatic file rewrites.
+- Token estimates are approximate and should not be presented as model-exact counts.
+
 ## Planned
-- inventory instruction files
-- estimate token cost
-- detect duplicate guidance
-- detect risky validation commands
-- suggest compact task prompts
+
+- Inventory instruction files.
+- Estimate instruction context cost.
+- Detect duplicate guidance.
+- Detect risky validation commands.
+- Suggest compact task prompts.
+- Generate task-specific briefings.
+- Report context budget pressure.
+- Compare instruction impact across refs.
