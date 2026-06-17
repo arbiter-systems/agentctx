@@ -171,6 +171,49 @@ describe("doctor --changed: exit codes", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it("does not fail for findings outside configured fail_on", async () => {
+    await initialCommit(dir, {
+      "AGENTS.md": [
+        "# Instructions",
+        "",
+        "```bash",
+        "dotnet format",
+        "```",
+        "",
+      ].join("\n"),
+    });
+
+    vi.spyOn(process, "cwd").mockReturnValue(dir);
+    await createProgram().parseAsync(["node", "agentctx", "doctor"]);
+
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("uses configured fail_on to fail doctor", async () => {
+    await initialCommit(dir, {
+      "agentctx.yml": [
+        "version: v0alpha1",
+        "doctor:",
+        "  fail_on:",
+        "    - full-repo-format-command",
+        "",
+      ].join("\n"),
+      "AGENTS.md": [
+        "# Instructions",
+        "",
+        "```bash",
+        "dotnet format",
+        "```",
+        "",
+      ].join("\n"),
+    });
+
+    vi.spyOn(process, "cwd").mockReturnValue(dir);
+    await createProgram().parseAsync(["node", "agentctx", "doctor"]);
+
+    expect(process.exitCode).toBe(1);
+  });
+
   it("leaves exit code 0 when no changed instruction sources are found", async () => {
     await initialCommit(dir, { "README.md": "# Project\n" });
     await writeFile(join(dir, "README.md"), "# Project — updated\n");

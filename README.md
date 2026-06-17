@@ -5,6 +5,43 @@ agentctx discovers and audits AI instruction files like AGENTS.md, CLAUDE.md, Co
 ## MVP
 - `agentctx doctor`
 
+## Configuration
+
+Repos can add an optional `agentctx.yml`:
+
+```yaml
+version: v0alpha1
+
+discovery:
+  include:
+    - AGENTS.md
+    - CLAUDE.md
+    - GEMINI.md
+    - .github/copilot-instructions.md
+    - "**/SKILL.md"
+  exclude:
+    - node_modules/**
+    - vendor/**
+    - dist/**
+    - build/**
+
+doctor:
+  token_thresholds:
+    source_warning: 1200
+    source_high: 2000
+    section_warning: 500
+  fail_on:
+    - conflicting-branch-target
+    - risky-validation-command
+
+suggest:
+  default_branch: dev
+  max_prompt_tokens: 350
+  max_selected_skills: 3
+  prefer_low_token_skills: true
+  include_full_skill_text: false
+```
+
 ## Planned
 - inventory instruction files
 - estimate token cost

@@ -17,6 +17,11 @@ import {
   formatSuggestText,
   selectCandidates,
 } from "./suggest.js";
+import {
+  ConfigError,
+  loadAgentctxConfig,
+  type AgentctxConfig,
+} from "./config.js";
 export type { SuggestResult } from "./suggest.js";
 
 export type DoctorDetails = {
@@ -46,9 +51,10 @@ export type DoctorReport = {
 
 export async function buildDoctorReport(
   cwd = process.cwd(),
-  opts: { details?: boolean; changed?: boolean } = {},
+  opts: { details?: boolean; changed?: boolean; config?: AgentctxConfig } = {},
 ): Promise<DoctorReport> {
-  const allSources = await discoverInstructionSources(cwd);
+  const config = opts.config ?? await loadAgentctxConfig(cwd);
+  const allSources = await discoverInstructionSources(cwd, config.discovery);
 
   let changedMeta: DoctorReport["changed"] | undefined;
   let sources = allSources;
@@ -116,6 +122,8 @@ export async function buildDoctorReport(
     sources: analyzed,
     sections: parsedSections,
     commands: parsedCommands,
+  }, {
+    tokenThresholds: config.doctor.token_thresholds,
   });
   const summary = {
     ...baseSummary,
@@ -141,6 +149,19 @@ export async function buildDoctorReport(
       : {}),
     ...(changedMeta === undefined ? {} : { changed: changedMeta }),
   };
+}
+
+function shouldFailDoctor(
+  findings: Finding[],
+  failOn: readonly Finding["code"][],
+): boolean {
+  const failCodes = new Set(failOn);
+  return findings.some((finding) => failCodes.has(finding.code));
+}
+
+function formatConfigError(err: unknown): string {
+  if (err instanceof ConfigError) return err.message;
+  return String(err);
 }
 
 export function formatDoctorText(report: DoctorReport): string[] {
@@ -265,12 +286,14 @@ export function createProgram(): Command {
     .option("--changed", "Analyze only instruction sources changed in the working tree")
     .action(async (options: { json?: boolean; details?: boolean; changed?: boolean }) => {
       try {
+        const config = await loadAgentctxConfig(process.cwd());
         const report = await buildDoctorReport(process.cwd(), {
           details: options.details === true,
           changed: options.changed === true,
+          config,
         });
 
-        if (report.findings.some((f) => f.severity === "high")) {
+        if (shouldFailDoctor(report.findings, config.doctor.fail_on)) {
           process.exitCode = 1;
         }
 
@@ -284,7 +307,7 @@ export function createProgram(): Command {
         }
       } catch (err) {
         process.exitCode = 2;
-        if (!options.json) console.error(String(err));
+        console.error(formatConfigError(err));
       }
     });
 
@@ -294,42 +317,56 @@ export function createProgram(): Command {
     .argument("<task>", "Task description to classify and match")
     .option("--json", "Output JSON")
     .action(async (task: string, options: { json?: boolean }) => {
-      const cwd = process.cwd();
-      const sources = await discoverInstructionSources(cwd);
-      const sourceContents = new Map(
-        (
-          await Promise.all(
-            sources.map(async (source) => {
-              try {
-                return [
-                  source.path,
-                  await readFile(path.join(cwd, source.path), "utf8"),
-                ] as const;
-              } catch {
-                return null;
-              }
-            }),
-          )
-        ).filter((entry): entry is readonly [string, string] => entry !== null),
-      );
-      const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
-      const findings = detectFindings({
-        sources: analyzed,
-        sections: [],
-        commands: [],
-      });
-      const skillMetadata = extractAllSkillMetadata(analyzed, sourceContents, findings);
-      const candidates = buildCandidates(skillMetadata);
-      const classified = classifyTask(task);
-      const result = selectCandidates(candidates, classified);
+      try {
+        const cwd = process.cwd();
+        const config = await loadAgentctxConfig(cwd);
+        const sources = await discoverInstructionSources(cwd, config.discovery);
+        const sourceContents = new Map(
+          (
+            await Promise.all(
+              sources.map(async (source) => {
+                try {
+                  return [
+                    source.path,
+                    await readFile(path.join(cwd, source.path), "utf8"),
+                  ] as const;
+                } catch {
+                  return null;
+                }
+              }),
+            )
+          ).filter((entry): entry is readonly [string, string] => entry !== null),
+        );
+        const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
+        const findings = detectFindings({
+          sources: analyzed,
+          sections: [],
+          commands: [],
+        }, {
+          tokenThresholds: config.doctor.token_thresholds,
+        });
+        const skillMetadata = extractAllSkillMetadata(analyzed, sourceContents, findings);
+        const candidates = buildCandidates(skillMetadata);
+        const classified = classifyTask(task);
+        const result = selectCandidates(candidates, classified, {
+          defaultBranch: config.suggest.default_branch,
+          maxPromptTokens: config.suggest.max_prompt_tokens,
+          maxSelectedSkills: config.suggest.max_selected_skills,
+          preferLowTokenSkills: config.suggest.prefer_low_token_skills,
+          includeFullSkillText: config.suggest.include_full_skill_text,
+        });
 
-      if (options.json) {
-        console.log(JSON.stringify(result, null, 2));
-        return;
-      }
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
 
-      for (const line of formatSuggestText(result)) {
-        console.log(line);
+        for (const line of formatSuggestText(result)) {
+          console.log(line);
+        }
+      } catch (err) {
+        process.exitCode = 2;
+        console.error(formatConfigError(err));
       }
     });
 

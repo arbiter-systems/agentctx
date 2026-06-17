@@ -253,6 +253,43 @@ describe("selectCandidates", () => {
     expect(result.selected).toHaveLength(3);
   });
 
+  it("honors configured max selected skills", () => {
+    const candidates = [
+      makeCandidate({ name: "a", tasks: ["audit"] }),
+      makeCandidate({ name: "b", tasks: ["audit"] }),
+      makeCandidate({ name: "c", tasks: ["audit"] }),
+    ];
+    const classified = classifyTask("audit issue 330");
+    const result = selectCandidates(candidates, classified, {
+      maxSelectedSkills: 2,
+    });
+    expect(result.selected).toHaveLength(2);
+    expect(result.excluded.some((candidate) => candidate.name === "c")).toBe(true);
+  });
+
+  it("honors configured max prompt tokens", () => {
+    const classified = classifyTask(
+      "audit issue 330 with a deliberately verbose task description that should be compacted when the prompt budget is small",
+    );
+    const result = selectCandidates([], classified, {
+      maxPromptTokens: 20,
+      defaultBranch: "dev",
+    });
+
+    expect(result.prompt.length).toBeLessThan(200);
+    expect(result.prompt).toContain("20 tokens");
+  });
+
+  it("can disable low-token scoring bonus", () => {
+    const small = makeCandidate({ name: "tiny", tasks: ["audit"], estimatedTokens: 50 });
+    const large = makeCandidate({ name: "large", tasks: ["audit"], estimatedTokens: 2000 });
+    const classified = classifyTask("audit issue 330");
+
+    expect(scoreCandidate(small, classified, { preferLowTokenSkills: false }).score).toBe(
+      scoreCandidate(large, classified, { preferLowTokenSkills: false }).score,
+    );
+  });
+
   it("excludes candidates with zero score", () => {
     const candidates = [
       makeCandidate({ name: "relevant", tasks: ["audit"] }),

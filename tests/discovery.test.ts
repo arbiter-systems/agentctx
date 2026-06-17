@@ -20,7 +20,6 @@ describe("discoverInstructionSources", () => {
       { path: "AGENTS.md", kind: "agents", scopePath: "." },
       { path: "CLAUDE.md", kind: "claude", scopePath: "." },
       { path: "GEMINI.md", kind: "gemini", scopePath: "." },
-      { path: "agentctx.yml", kind: "config", scopePath: "." },
     ]);
   });
 
@@ -81,5 +80,28 @@ describe("discoverInstructionSources", () => {
     ).resolves.toEqual([
       { path: "allowed/SKILL.md", kind: "skill", scopePath: "allowed" },
     ]);
+  });
+
+  it("respects configured include and exclude patterns", async () => {
+    const fixture = await mkdtemp(path.join(tmpdir(), "agentctx-discovery-config-"));
+
+    try {
+      await mkdir(path.join(fixture, "included"), { recursive: true });
+      await mkdir(path.join(fixture, "ignored"), { recursive: true });
+      await writeFile(path.join(fixture, "AGENTS.md"), "# Root\n");
+      await writeFile(path.join(fixture, "included", "SKILL.md"), "# Included\n");
+      await writeFile(path.join(fixture, "ignored", "SKILL.md"), "# Ignored\n");
+
+      await expect(
+        discoverInstructionSources(fixture, {
+          include: ["**/SKILL.md"],
+          exclude: ["ignored/**"],
+        }),
+      ).resolves.toEqual([
+        { path: "included/SKILL.md", kind: "skill", scopePath: "included" },
+      ]);
+    } finally {
+      await rm(fixture, { force: true, recursive: true });
+    }
   });
 });

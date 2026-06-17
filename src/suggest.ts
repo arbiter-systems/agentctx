@@ -1,4 +1,5 @@
 import type { SkillMetadata, SkillPenalty } from "./skillMetadata.js";
+import { estimateTokens } from "./tokenEstimate.js";
 
 // ---------------------------------------------------------------------------
 // Task classification
@@ -141,6 +142,14 @@ const PENALTY_HIGH = -30;
 const LOW_TOKEN_BONUS_MAX = 10;
 const LOW_TOKEN_THRESHOLD = 300;
 
+export type SuggestOptions = {
+  maxPromptTokens?: number;
+  maxSelectedSkills?: number;
+  preferLowTokenSkills?: boolean;
+  defaultBranch?: string;
+  includeFullSkillText?: false;
+};
+
 export type ScoredSuggestCandidate = SuggestCandidate & {
   score: number;
   selected: boolean;
@@ -222,6 +231,7 @@ function applyPenalties(
 export function scoreCandidate(
   candidate: SuggestCandidate,
   classified: ClassifiedTask,
+  opts: { preferLowTokenSkills?: boolean } = {},
 ): ScoredSuggestCandidate {
   const lower = classified.input.toLowerCase();
   const reasons: string[] = [];
@@ -257,7 +267,7 @@ export function scoreCandidate(
   }
 
   // Token bonus only as tie-breaker; don't make irrelevant candidates relevant.
-  if (score > 0) {
+  if (score > 0 && opts.preferLowTokenSkills !== false) {
     const bonus = tokenBonus(candidate.estimatedTokens);
     if (bonus > 0) {
       score += bonus;
@@ -318,11 +328,35 @@ export function buildPrompt(
   input: string,
   category: TaskCategory,
   selected: ScoredSuggestCandidate[],
+  opts: { defaultBranch?: string; maxPromptTokens?: number } = {},
 ): string {
   const skillNames = selected.map((c) => c.name).join(", ") || "none";
-  return PROMPT_TEMPLATES[category]
+  const branchLine = opts.defaultBranch
+    ? `\nDefault branch: ${opts.defaultBranch}`
+    : "";
+  const prompt = PROMPT_TEMPLATES[category]
     .split("{task}").join(input)
-    .split("{skills}").join(skillNames);
+    .split("{skills}").join(skillNames) + branchLine;
+
+  return trimPromptToBudget(prompt, opts.maxPromptTokens);
+}
+
+function trimPromptToBudget(prompt: string, maxPromptTokens: number | undefined): string {
+  if (maxPromptTokens === undefined || estimateTokens(prompt) <= maxPromptTokens) {
+    return prompt;
+  }
+
+  const lines = prompt.split("\n");
+  while (lines.length > 1 && estimateTokens(lines.join("\n")) > maxPromptTokens) {
+    lines.splice(Math.max(1, lines.length - 2), 1);
+  }
+
+  let compact = lines.join("\n");
+  if (estimateTokens(compact) <= maxPromptTokens) return compact;
+
+  const maxChars = Math.max(40, maxPromptTokens * 4);
+  compact = compact.slice(0, maxChars).trimEnd();
+  return `${compact}\n[Prompt truncated to ${maxPromptTokens} tokens]`;
 }
 
 function computeAvoidedContext(
@@ -359,9 +393,15 @@ export type SuggestResult = {
 export function selectCandidates(
   candidates: SuggestCandidate[],
   classified: ClassifiedTask,
+  opts: SuggestOptions = {},
 ): SuggestResult {
+  const maxSelectedSkills = opts.maxSelectedSkills ?? TOP_N;
+  const scoreOptions: { preferLowTokenSkills?: boolean } = {};
+  if (opts.preferLowTokenSkills !== undefined) {
+    scoreOptions.preferLowTokenSkills = opts.preferLowTokenSkills;
+  }
   const scored = candidates
-    .map((c) => scoreCandidate(c, classified))
+    .map((c) => scoreCandidate(c, classified, scoreOptions))
     .sort((a, b) => b.score - a.score);
 
   const relevant: ScoredSuggestCandidate[] = [];
@@ -370,14 +410,17 @@ export function selectCandidates(
     (c.score > 0 ? relevant : irrelevant).push(c);
   }
 
-  const selected = relevant.slice(0, TOP_N).map((c) => ({ ...c, selected: true }));
+  const selected = relevant.slice(0, maxSelectedSkills).map((c) => ({ ...c, selected: true }));
   const excluded = [
-    ...relevant.slice(TOP_N).map((c) => ({ ...c, selected: false })),
+    ...relevant.slice(maxSelectedSkills).map((c) => ({ ...c, selected: false })),
     ...irrelevant,
   ];
 
   const route = classified.primaryCategory;
-  const prompt = buildPrompt(classified.input, classified.primaryCategory, selected);
+  const promptOptions: { defaultBranch?: string; maxPromptTokens?: number } = {};
+  if (opts.defaultBranch !== undefined) promptOptions.defaultBranch = opts.defaultBranch;
+  if (opts.maxPromptTokens !== undefined) promptOptions.maxPromptTokens = opts.maxPromptTokens;
+  const prompt = buildPrompt(classified.input, classified.primaryCategory, selected, promptOptions);
   const estimatedAvoidedContext = computeAvoidedContext(selected, excluded);
 
   return { input: classified.input, classification: classified, selected, excluded, route, prompt, estimatedAvoidedContext };

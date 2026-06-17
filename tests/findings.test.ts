@@ -145,6 +145,40 @@ describe("doctor findings", () => {
     });
   });
 
+  it("uses configured doctor thresholds for oversized findings", async () => {
+    const fixtureRoot = await mkdtemp(path.join(tmpdir(), "agentctx-thresholds-"));
+
+    try {
+      await writeFile(
+        path.join(fixtureRoot, "agentctx.yml"),
+        [
+          "version: v0alpha1",
+          "doctor:",
+          "  token_thresholds:",
+          "    source_warning: 10",
+          "    source_high: 20",
+          "    section_warning: 10",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(
+        path.join(fixtureRoot, "AGENTS.md"),
+        "# Small\n\nThis source is small under defaults but large under configured thresholds.\n",
+      );
+
+      const report = await buildDoctorReport(fixtureRoot);
+
+      expect(report.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "oversized-source" }),
+          expect.objectContaining({ code: "oversized-section" }),
+        ]),
+      );
+    } finally {
+      await rm(fixtureRoot, { force: true, recursive: true });
+    }
+  });
+
   it("includes complete finding records in JSON output", async () => {
     await withFindingsFixture(async (fixtureRoot) => {
       const output = structuredClone(
