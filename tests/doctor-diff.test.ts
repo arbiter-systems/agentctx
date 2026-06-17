@@ -14,9 +14,9 @@ async function git(args: string[], cwd: string): Promise<void> {
 }
 
 async function makeTempRepo(branch = "dev"): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(join(tmpdir(), "agentctx-dd-"));
+  const dir = await mkdtemp(join(tmpdir(), "instructov-dd-"));
   await git(["init"], dir);
-  await git(["config", "user.email", "test@agentctx.test"], dir);
+  await git(["config", "user.email", "test@instructov.test"], dir);
   await git(["config", "user.name", "Test"], dir);
   await git(["branch", "-M", branch], dir);
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
@@ -88,7 +88,7 @@ describe("doctor --diff", () => {
 
     await createProgram().parseAsync([
       "node",
-      "agentctx",
+      "instructov",
       "doctor",
       "--diff",
       "dev",
@@ -171,7 +171,7 @@ describe("doctor --diff", () => {
 
     await createProgram().parseAsync([
       "node",
-      "agentctx",
+      "instructov",
       "doctor",
       "--diff",
       "missing-ref",
@@ -205,7 +205,7 @@ describe("doctor --diff", () => {
 
     await createProgram().parseAsync([
       "node",
-      "agentctx",
+      "instructov",
       "doctor",
       "--changed",
       "--diff",

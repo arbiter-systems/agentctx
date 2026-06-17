@@ -124,7 +124,7 @@ async function readSourceContents(
 function buildSnapshotFromAnalysis(
   analyzed: AnalyzedInstructionSource[],
   sourceContents: ReadonlyMap<string, string>,
-  config: AgentctxConfig,
+  config: instructovConfig,
   opts: { details?: boolean } = {},
 ): DoctorSnapshot {
   const baseSummary = summarize(analyzed);
@@ -177,7 +177,7 @@ function buildSnapshotFromAnalysis(
 async function buildCurrentDoctorSnapshot(
   cwd: string,
   sources: InstructionSource[],
-  config: AgentctxConfig,
+  config: instructovConfig,
   opts: { details?: boolean } = {},
 ): Promise<DoctorSnapshot> {
   const sourceContents = await readSourceContents(cwd, sources);
@@ -205,7 +205,7 @@ async function buildBaselineDoctorSnapshot(
   cwd: string,
   sources: InstructionSource[],
   baselineRef: string,
-  config: AgentctxConfig,
+  config: instructovConfig,
 ): Promise<DoctorSnapshot> {
   const entries = await Promise.all(
     sources.map(async (source) => {
@@ -296,7 +296,7 @@ async function buildDoctorDiffReport(
   comparedRef: string,
   sources: InstructionSource[],
   currentSnapshot: DoctorSnapshot,
-  config: AgentctxConfig,
+  config: instructovConfig,
 ): Promise<DoctorDiffReport> {
   const comparison = await getInstructionDiffComparison(cwd, comparedRef);
   const changedInstructionFiles = filterToInstructionSources(
@@ -344,11 +344,11 @@ export async function buildDoctorReport(
     details?: boolean;
     changed?: boolean;
     diffRef?: string;
-    config?: AgentctxConfig;
+    config?: instructovConfig;
     budgetTokens?: number;
   } = {},
 ): Promise<DoctorReport> {
-  const config = opts.config ?? await loadAgentctxConfig(cwd);
+  const config = opts.config ?? await loadinstructovConfig(cwd);
   if (opts.changed && opts.diffRef !== undefined) {
     throw new ConfigError("--changed cannot be used with --diff.");
   }
