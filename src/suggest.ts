@@ -1,4 +1,13 @@
+import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
+
+import type { AnalyzedInstructionSource } from "./analysis.js";
+import type { AgentctxConfig } from "./config.js";
+import { loadAgentctxConfig } from "./config.js";
+import { discoverInstructionSources } from "./discovery.js";
+import { detectFindings } from "./findings.js";
 import type { SkillMetadata, SkillPenalty } from "./skillMetadata.js";
+import { extractAllSkillMetadata } from "./skillMetadata.js";
 import { estimateTokens } from "./tokenEstimate.js";
 
 // ---------------------------------------------------------------------------
@@ -412,6 +421,81 @@ export type SuggestResult = {
   prompt: string;
   estimatedAvoidedContext: EstimatedAvoidedContext;
 };
+
+async function readSourceContents(
+  cwd: string,
+  sources: Array<{ path: string }>,
+): Promise<Map<string, string>> {
+  return new Map(
+    (
+      await Promise.all(
+        sources.map(async (source) => {
+          try {
+            return [
+              source.path,
+              await readFile(path.join(cwd, source.path), "utf8"),
+            ] as const;
+          } catch {
+            return null;
+          }
+        }),
+      )
+    ).filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+}
+
+async function analyzeSourcesInMemory(
+  cwd: string,
+  sources: Awaited<ReturnType<typeof discoverInstructionSources>>,
+  sourceContents: ReadonlyMap<string, string>,
+): Promise<AnalyzedInstructionSource[]> {
+  return Promise.all(
+    sources.map(async (source) => {
+      const text = sourceContents.get(source.path);
+      if (text === undefined) {
+        return { ...source, bytes: 0, estimatedTokens: 0 };
+      }
+
+      let bytes: number;
+      try {
+        bytes = (await stat(path.join(cwd, source.path))).size;
+      } catch {
+        bytes = Buffer.byteLength(text);
+      }
+
+      return { ...source, bytes, estimatedTokens: estimateTokens(text) };
+    }),
+  );
+}
+
+export async function buildSuggestResultForTask(
+  cwd: string,
+  task: string,
+  config?: AgentctxConfig,
+): Promise<SuggestResult> {
+  const resolvedConfig = config ?? await loadAgentctxConfig(cwd);
+  const sources = await discoverInstructionSources(cwd, resolvedConfig.discovery);
+  const sourceContents = await readSourceContents(cwd, sources);
+  const analyzed = await analyzeSourcesInMemory(cwd, sources, sourceContents);
+  const findings = detectFindings({
+    sources: analyzed,
+    sections: [],
+    commands: [],
+  }, {
+    tokenThresholds: resolvedConfig.doctor.token_thresholds,
+  });
+  const skillMetadata = extractAllSkillMetadata(analyzed, sourceContents, findings);
+  const candidates = buildCandidates(skillMetadata);
+  const classified = classifyTask(task);
+
+  return selectCandidates(candidates, classified, {
+    defaultBranch: resolvedConfig.suggest.default_branch,
+    maxPromptTokens: resolvedConfig.suggest.max_prompt_tokens,
+    maxSelectedSkills: resolvedConfig.suggest.max_selected_skills,
+    preferLowTokenSkills: resolvedConfig.suggest.prefer_low_token_skills,
+    includeFullSkillText: resolvedConfig.suggest.include_full_skill_text,
+  });
+}
 
 export function selectCandidates(
   candidates: SuggestCandidate[],

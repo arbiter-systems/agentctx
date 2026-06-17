@@ -12,11 +12,10 @@ import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findin
 import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
 import { getChangedFiles, filterToInstructionSources, toPosixPath } from "./gitChanged.js";
 import {
-  buildCandidates,
-  classifyTask,
+  buildSuggestResultForTask,
   formatSuggestText,
-  selectCandidates,
 } from "./suggest.js";
+import { buildBriefResult, formatBriefText } from "./brief.js";
 import {
   ConfigError,
   loadAgentctxConfig,
@@ -320,41 +319,7 @@ export function createProgram(): Command {
       try {
         const cwd = process.cwd();
         const config = await loadAgentctxConfig(cwd);
-        const sources = await discoverInstructionSources(cwd, config.discovery);
-        const sourceContents = new Map(
-          (
-            await Promise.all(
-              sources.map(async (source) => {
-                try {
-                  return [
-                    source.path,
-                    await readFile(path.join(cwd, source.path), "utf8"),
-                  ] as const;
-                } catch {
-                  return null;
-                }
-              }),
-            )
-          ).filter((entry): entry is readonly [string, string] => entry !== null),
-        );
-        const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
-        const findings = detectFindings({
-          sources: analyzed,
-          sections: [],
-          commands: [],
-        }, {
-          tokenThresholds: config.doctor.token_thresholds,
-        });
-        const skillMetadata = extractAllSkillMetadata(analyzed, sourceContents, findings);
-        const candidates = buildCandidates(skillMetadata);
-        const classified = classifyTask(task);
-        const result = selectCandidates(candidates, classified, {
-          defaultBranch: config.suggest.default_branch,
-          maxPromptTokens: config.suggest.max_prompt_tokens,
-          maxSelectedSkills: config.suggest.max_selected_skills,
-          preferLowTokenSkills: config.suggest.prefer_low_token_skills,
-          includeFullSkillText: config.suggest.include_full_skill_text,
-        });
+        const result = await buildSuggestResultForTask(cwd, task, config);
 
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
@@ -362,6 +327,32 @@ export function createProgram(): Command {
         }
 
         for (const line of formatSuggestText(result)) {
+          console.log(line);
+        }
+      } catch (err) {
+        process.exitCode = 2;
+        console.error(formatConfigError(err));
+      }
+    });
+
+  program
+    .command("brief")
+    .description("Build a compact task briefing for a coding agent.")
+    .argument("<task>", "Task description to brief")
+    .option("--json", "Output JSON")
+    .action(async (task: string, options: { json?: boolean }) => {
+      try {
+        const cwd = process.cwd();
+        const config = await loadAgentctxConfig(cwd);
+        const suggestResult = await buildSuggestResultForTask(cwd, task, config);
+        const result = buildBriefResult(suggestResult);
+
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        for (const line of formatBriefText(result)) {
           console.log(line);
         }
       } catch (err) {
