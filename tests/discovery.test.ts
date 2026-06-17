@@ -40,7 +40,7 @@ describe("discoverInstructionSources", () => {
   });
 
   it("excludes ignored directories when discovering SKILL.md files", async () => {
-    const fixture = await mkdtemp(path.join(tmpdir(), "agentctx-discovery-"));
+    const fixture = await mkdtemp(path.join(tmpdir(), "instructov-discovery-"));
     const excludedDirectories = [
       ".git",
       "node_modules",
@@ -83,7 +83,7 @@ describe("discoverInstructionSources", () => {
   });
 
   it("respects configured include and exclude patterns", async () => {
-    const fixture = await mkdtemp(path.join(tmpdir(), "agentctx-discovery-config-"));
+    const fixture = await mkdtemp(path.join(tmpdir(), "instructov-discovery-config-"));
 
     try {
       await mkdir(path.join(fixture, "included"), { recursive: true });

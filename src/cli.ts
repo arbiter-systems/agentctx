@@ -37,8 +37,8 @@ import {
 import { buildBriefResult, formatBriefText } from "./brief.js";
 import {
   ConfigError,
-  loadAgentctxConfig,
-  type AgentctxConfig,
+  loadinstructovConfig,
+  type instructovConfig,
 } from "./config.js";
 export type { SuggestResult } from "./suggest.js";
 
@@ -124,7 +124,7 @@ async function readSourceContents(
 function buildSnapshotFromAnalysis(
   analyzed: AnalyzedInstructionSource[],
   sourceContents: ReadonlyMap<string, string>,
-  config: AgentctxConfig,
+  config: instructovConfig,
   opts: { details?: boolean } = {},
 ): DoctorSnapshot {
   const baseSummary = summarize(analyzed);
@@ -177,7 +177,7 @@ function buildSnapshotFromAnalysis(
 async function buildCurrentDoctorSnapshot(
   cwd: string,
   sources: InstructionSource[],
-  config: AgentctxConfig,
+  config: instructovConfig,
   opts: { details?: boolean } = {},
 ): Promise<DoctorSnapshot> {
   const sourceContents = await readSourceContents(cwd, sources);
@@ -205,7 +205,7 @@ async function buildBaselineDoctorSnapshot(
   cwd: string,
   sources: InstructionSource[],
   baselineRef: string,
-  config: AgentctxConfig,
+  config: instructovConfig,
 ): Promise<DoctorSnapshot> {
   const entries = await Promise.all(
     sources.map(async (source) => {
@@ -296,7 +296,7 @@ async function buildDoctorDiffReport(
   comparedRef: string,
   sources: InstructionSource[],
   currentSnapshot: DoctorSnapshot,
-  config: AgentctxConfig,
+  config: instructovConfig,
 ): Promise<DoctorDiffReport> {
   const comparison = await getInstructionDiffComparison(cwd, comparedRef);
   const changedInstructionFiles = filterToInstructionSources(
@@ -344,11 +344,11 @@ export async function buildDoctorReport(
     details?: boolean;
     changed?: boolean;
     diffRef?: string;
-    config?: AgentctxConfig;
+    config?: instructovConfig;
     budgetTokens?: number;
   } = {},
 ): Promise<DoctorReport> {
-  const config = opts.config ?? await loadAgentctxConfig(cwd);
+  const config = opts.config ?? await loadinstructovConfig(cwd);
   if (opts.changed && opts.diffRef !== undefined) {
     throw new ConfigError("--changed cannot be used with --diff.");
   }
@@ -466,7 +466,7 @@ export function formatDoctorText(
   const { summary, changed } = report;
   const isChanged = changed?.enabled === true;
 
-  const lines: string[] = [isChanged ? "agentctx doctor --changed" : "agentctx doctor"];
+  const lines: string[] = [isChanged ? "instructov doctor --changed" : "instructov doctor"];
 
   if (isChanged && changed) {
     lines.push(
@@ -612,7 +612,7 @@ export function createProgram(): Command {
   const program = new Command();
 
   program
-    .name("agentctx")
+    .name("instructov")
     .description("Audit and streamline AI instruction files for coding agents.")
     .version("0.1.0");
 
@@ -632,7 +632,7 @@ export function createProgram(): Command {
       budget?: string;
     }) => {
       try {
-        const config = await loadAgentctxConfig(process.cwd());
+        const config = await loadinstructovConfig(process.cwd());
         const budgetTokens = options.budget === undefined
           ? undefined
           : parsePositiveIntegerOption(options.budget, "--budget");
@@ -672,7 +672,7 @@ export function createProgram(): Command {
     .action(async (task: string, options: { json?: boolean }) => {
       try {
         const cwd = process.cwd();
-        const config = await loadAgentctxConfig(cwd);
+        const config = await loadinstructovConfig(cwd);
         const result = await buildSuggestResultForTask(cwd, task, config);
 
         if (options.json) {
@@ -700,7 +700,7 @@ export function createProgram(): Command {
     .action(async (task: string, options: { json?: boolean; budget?: string }) => {
       try {
         const cwd = process.cwd();
-        const config = await loadAgentctxConfig(cwd);
+        const config = await loadinstructovConfig(cwd);
         const budgetTokens = options.budget === undefined
           ? undefined
           : parsePositiveIntegerOption(options.budget, "--budget");

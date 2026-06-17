@@ -30,7 +30,7 @@ function finding(
 async function withInstructionFixture<T>(
   run: (fixtureRoot: string) => Promise<T>,
 ): Promise<T> {
-  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "agentctx-budget-"));
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "instructov-budget-"));
   try {
     await writeFile(
       path.join(fixtureRoot, "AGENTS.md"),
@@ -178,7 +178,7 @@ describe("doctor budget CLI", () => {
 
       await createProgram().parseAsync([
         "node",
-        "agentctx",
+        "instructov",
         "doctor",
         "--budget",
         "400",
@@ -213,7 +213,7 @@ describe("doctor budget CLI", () => {
 
       await createProgram().parseAsync([
         "node",
-        "agentctx",
+        "instructov",
         "doctor",
         "--budget",
         "0",
@@ -233,7 +233,7 @@ describe("brief budget CLI", () => {
 
       await createProgram().parseAsync([
         "node",
-        "agentctx",
+        "instructov",
         "brief",
         "review PR 31",
         "--budget",
@@ -254,7 +254,7 @@ describe("brief budget CLI", () => {
 
       await createProgram().parseAsync([
         "node",
-        "agentctx",
+        "instructov",
         "brief",
         "review PR 31",
         "--budget",

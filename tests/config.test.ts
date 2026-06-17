@@ -6,18 +6,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   ConfigError,
-  DEFAULT_AGENTCTX_CONFIG,
-  loadAgentctxConfig,
+  DEFAULT_instructov_CONFIG,
+  loadinstructovConfig,
 } from "../src/config.js";
 
 async function withConfigFixture<T>(
   configText: string | null,
   run: (fixtureRoot: string) => Promise<T>,
 ): Promise<T> {
-  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "agentctx-config-"));
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "instructov-config-"));
   try {
     if (configText !== null) {
-      await writeFile(path.join(fixtureRoot, "agentctx.yml"), configText);
+      await writeFile(path.join(fixtureRoot, "instructov.yml"), configText);
     }
     return await run(fixtureRoot);
   } finally {
@@ -25,11 +25,11 @@ async function withConfigFixture<T>(
   }
 }
 
-describe("loadAgentctxConfig", () => {
+describe("loadinstructovConfig", () => {
   it("returns defaults when config is missing", async () => {
     await withConfigFixture(null, async (fixtureRoot) => {
-      await expect(loadAgentctxConfig(fixtureRoot)).resolves.toEqual(
-        DEFAULT_AGENTCTX_CONFIG,
+      await expect(loadinstructovConfig(fixtureRoot)).resolves.toEqual(
+        DEFAULT_instructov_CONFIG,
       );
     });
   });
@@ -48,17 +48,17 @@ describe("loadAgentctxConfig", () => {
         "",
       ].join("\n"),
       async (fixtureRoot) => {
-        const config = await loadAgentctxConfig(fixtureRoot);
+        const config = await loadinstructovConfig(fixtureRoot);
         expect(config.doctor.token_thresholds).toEqual({
-          ...DEFAULT_AGENTCTX_CONFIG.doctor.token_thresholds,
+          ...DEFAULT_instructov_CONFIG.doctor.token_thresholds,
           source_warning: 100,
         });
         expect(config.suggest.max_selected_skills).toBe(2);
         expect(config.suggest.max_prompt_tokens).toBe(
-          DEFAULT_AGENTCTX_CONFIG.suggest.max_prompt_tokens,
+          DEFAULT_instructov_CONFIG.suggest.max_prompt_tokens,
         );
         expect(config.display_limits).toEqual({
-          ...DEFAULT_AGENTCTX_CONFIG.display_limits,
+          ...DEFAULT_instructov_CONFIG.display_limits,
           excluded_guidance: 2,
         });
       },
@@ -67,8 +67,8 @@ describe("loadAgentctxConfig", () => {
 
   it("rejects invalid version", async () => {
     await withConfigFixture("version: v1\n", async (fixtureRoot) => {
-      await expect(loadAgentctxConfig(fixtureRoot)).rejects.toThrow(ConfigError);
-      await expect(loadAgentctxConfig(fixtureRoot)).rejects.toThrow("version");
+      await expect(loadinstructovConfig(fixtureRoot)).rejects.toThrow(ConfigError);
+      await expect(loadinstructovConfig(fixtureRoot)).rejects.toThrow("version");
     });
   });
 
@@ -82,7 +82,7 @@ describe("loadAgentctxConfig", () => {
         "",
       ].join("\n"),
       async (fixtureRoot) => {
-        await expect(loadAgentctxConfig(fixtureRoot)).rejects.toThrow(
+        await expect(loadinstructovConfig(fixtureRoot)).rejects.toThrow(
           "source_warning",
         );
       },
@@ -99,14 +99,14 @@ describe("loadAgentctxConfig", () => {
         "",
       ].join("\n"),
       async (fixtureRoot) => {
-        await expect(loadAgentctxConfig(fixtureRoot)).rejects.toThrow("fail_on");
+        await expect(loadinstructovConfig(fixtureRoot)).rejects.toThrow("fail_on");
       },
     );
   });
 
   it("defaults include_full_skill_text to false", async () => {
     await withConfigFixture("version: v0alpha1\n", async (fixtureRoot) => {
-      const config = await loadAgentctxConfig(fixtureRoot);
+      const config = await loadinstructovConfig(fixtureRoot);
       expect(config.suggest.include_full_skill_text).toBe(false);
     });
   });
@@ -120,7 +120,7 @@ describe("loadAgentctxConfig", () => {
         "",
       ].join("\n"),
       async (fixtureRoot) => {
-        await expect(loadAgentctxConfig(fixtureRoot)).rejects.toThrow(
+        await expect(loadinstructovConfig(fixtureRoot)).rejects.toThrow(
           "include_full_skill_text",
         );
       },

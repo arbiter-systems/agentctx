@@ -1,11 +1,11 @@
 {
-  "name": "agentctx",
+  "name": "instructov",
   "version": "0.1.0",
   "description": "Discover, audit, and streamline AI instruction files for coding agents.",
   "main": "./dist/cli.js",
   "type": "module",
   "bin": {
-    "agentctx": "./dist/cli.js"
+    "instructov": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

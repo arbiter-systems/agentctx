@@ -14,15 +14,15 @@ async function git(args: string[], cwd: string): Promise<void> {
 }
 
 async function makeTempRepo(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(join(tmpdir(), "agentctx-dc-"));
+  const dir = await mkdtemp(join(tmpdir(), "instructov-dc-"));
   await git(["init"], dir);
-  await git(["config", "user.email", "test@agentctx.test"], dir);
+  await git(["config", "user.email", "test@instructov.test"], dir);
   await git(["config", "user.name", "Test"], dir);
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
 async function makeTempDir(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(join(tmpdir(), "agentctx-noGit-"));
+  const dir = await mkdtemp(join(tmpdir(), "instructov-noGit-"));
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
@@ -128,7 +128,7 @@ describe("doctor --changed: text output", () => {
     const report = await buildDoctorReport(dir, { changed: true });
     const lines = formatDoctorText(report);
 
-    expect(lines[0]).toBe("agentctx doctor --changed");
+    expect(lines[0]).toBe("instructov doctor --changed");
   });
 
   it("prints no changed instruction sources when nothing relevant changed", async () => {
@@ -139,7 +139,7 @@ describe("doctor --changed: text output", () => {
     const lines = formatDoctorText(report);
 
     expect(lines).toContain("No changed instruction sources found.");
-    expect(lines[0]).toBe("agentctx doctor --changed");
+    expect(lines[0]).toBe("instructov doctor --changed");
   });
 });
 
@@ -166,7 +166,7 @@ describe("doctor --changed: exit codes", () => {
     await writeFile(join(dir, "AGENTS.md"), "# Instructions\n\nAlways run full repo tests.\n");
 
     vi.spyOn(process, "cwd").mockReturnValue(dir);
-    await createProgram().parseAsync(["node", "agentctx", "doctor", "--changed"]);
+    await createProgram().parseAsync(["node", "instructov", "doctor", "--changed"]);
 
     expect(process.exitCode).toBe(1);
   });
@@ -184,14 +184,14 @@ describe("doctor --changed: exit codes", () => {
     });
 
     vi.spyOn(process, "cwd").mockReturnValue(dir);
-    await createProgram().parseAsync(["node", "agentctx", "doctor"]);
+    await createProgram().parseAsync(["node", "instructov", "doctor"]);
 
     expect(process.exitCode).toBe(0);
   });
 
   it("uses configured fail_on to fail doctor", async () => {
     await initialCommit(dir, {
-      "agentctx.yml": [
+      "instructov.yml": [
         "version: v0alpha1",
         "doctor:",
         "  fail_on:",
@@ -209,7 +209,7 @@ describe("doctor --changed: exit codes", () => {
     });
 
     vi.spyOn(process, "cwd").mockReturnValue(dir);
-    await createProgram().parseAsync(["node", "agentctx", "doctor"]);
+    await createProgram().parseAsync(["node", "instructov", "doctor"]);
 
     expect(process.exitCode).toBe(1);
   });
@@ -219,7 +219,7 @@ describe("doctor --changed: exit codes", () => {
     await writeFile(join(dir, "README.md"), "# Project — updated\n");
 
     vi.spyOn(process, "cwd").mockReturnValue(dir);
-    await createProgram().parseAsync(["node", "agentctx", "doctor", "--changed"]);
+    await createProgram().parseAsync(["node", "instructov", "doctor", "--changed"]);
 
     expect(process.exitCode).toBe(0);
   });
@@ -229,7 +229,7 @@ describe("doctor --changed: exit codes", () => {
     try {
       await writeFile(join(nonGitDir, "AGENTS.md"), "# Agent\n\nGuidance.\n");
       vi.spyOn(process, "cwd").mockReturnValue(nonGitDir);
-      await createProgram().parseAsync(["node", "agentctx", "doctor", "--changed"]);
+      await createProgram().parseAsync(["node", "instructov", "doctor", "--changed"]);
       expect(process.exitCode).toBe(2);
     } finally {
       await cleanupNonGit();
@@ -238,7 +238,7 @@ describe("doctor --changed: exit codes", () => {
 });
 
 describe("formatDoctorText: changed mode off (regression)", () => {
-  it("uses agentctx doctor header when changed is not set", () => {
+  it("uses instructov doctor header when changed is not set", () => {
     const report = {
       command: "doctor" as const,
       status: "ok" as const,
@@ -254,6 +254,6 @@ describe("formatDoctorText: changed mode off (regression)", () => {
       skillMetadata: [],
     };
     const lines = formatDoctorText(report);
-    expect(lines[0]).toBe("agentctx doctor");
+    expect(lines[0]).toBe("instructov doctor");
   });
 });

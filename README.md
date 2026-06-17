@@ -1,20 +1,20 @@
-# agentctx
+# instructov
 
-agentctx discovers and audits AI instruction files like AGENTS.md, CLAUDE.md, Copilot instructions, and SKILL.md to reduce token waste and conflicting guidance.
+instructov discovers and audits AI instruction files like AGENTS.md, CLAUDE.md, Copilot instructions, and SKILL.md to reduce token waste and conflicting guidance.
 
 ## MVP
-- `agentctx doctor`
-- `agentctx doctor --diff <ref>`
+- `instructov doctor`
+- `instructov doctor --diff <ref>`
 
 Compare instruction impact before merging:
 
 ```bash
-agentctx doctor --diff dev
+instructov doctor --diff dev
 ```
 
 ## Configuration
 
-Repos can add an optional `agentctx.yml`:
+Repos can add an optional `instructov.yml`:
 
 ```yaml
 version: v0alpha1

@@ -3,8 +3,8 @@ import path from "node:path";
 
 export const CACHE_VERSION = "0.1.0";
 
-const CACHE_DIR = ".agentctx";
-const CACHE_FILE = ".agentctx/cache.json";
+const CACHE_DIR = ".instructov";
+const CACHE_FILE = ".instructov/cache.json";
 
 export type CacheEntry = {
   path: string;
