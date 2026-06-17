@@ -9,19 +9,19 @@ It discovers repo guidance such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.gith
 Use `doctor` to inspect instruction debt:
 
 ```bash
-instructov doctor
+instv doctor
 ```
 
 Use `suggest` to inspect deterministic routing for a task:
 
 ```bash
-instructov suggest "review PR 31"
+instv suggest "review PR 31"
 ```
 
 Use `brief` to produce a compact task prompt/loadout without dumping every instruction file into context:
 
 ```bash
-instructov brief "review PR 31 for security and test gaps"
+instv brief "review PR 31 for security and test gaps"
 ```
 
 ## Context budget and branch impact
@@ -29,14 +29,18 @@ instructov brief "review PR 31 for security and test gaps"
 Show approximate instruction-context pressure:
 
 ```bash
-instructov doctor --budget 4000
+instv doctor --budget 4000
 ```
 
 Compare instruction impact before merging:
 
 ```bash
-instructov doctor --diff dev
+instv doctor --diff dev
 ```
+
+## Command aliases
+
+`instv` is the primary short CLI command. `instructov` remains available as a compatibility alias.
 
 ## Configuration
 
@@ -83,7 +87,7 @@ display_limits:
 
 ## Legacy migration
 
-The repo was previously named `agentctx`. New docs and examples should use `Instructov` and `instructov`.
+The repo was previously named `agentctx`. New docs and examples should use `Instructov` and `instv`.
 
 Implementation may keep compatibility for legacy `agentctx.yml` and `.agentctx/` paths while new projects move to `instructov.yml` and `.instructov/`.
 
