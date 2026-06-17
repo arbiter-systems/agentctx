@@ -5,7 +5,7 @@ import type {
 } from "./suggest.js";
 import type { ContextBudgetReport } from "./budget.js";
 import { formatBudgetText } from "./budget.js";
-import { previewItems } from "./formatting.js";
+import { optionalBlock, previewItems } from "./formatting.js";
 
 export type BriefGuidance = {
   path: string;
@@ -104,8 +104,6 @@ export function formatBriefText(
     ...result.prompt.split("\n"),
     "",
     `Estimated avoided context: ~${result.estimatedAvoidedContext.estimatedAvoidedTokens} tokens`,
-    ...(result.budget === undefined
-      ? []
-      : ["", ...formatBudgetText(result.budget)]),
+    ...optionalBlock(result.budget, formatBudgetText),
   ];
 }

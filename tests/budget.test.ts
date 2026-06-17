@@ -59,6 +59,21 @@ async function withInstructionFixture<T>(
         "",
       ].join("\n"),
     );
+    await mkdir(path.join(fixtureRoot, "skills", "docs"), { recursive: true });
+    await writeFile(
+      path.join(fixtureRoot, "skills", "docs", "SKILL.md"),
+      [
+        "---",
+        "name: docs",
+        "summary: Write documentation updates.",
+        "tasks: [docs]",
+        "triggers: [write docs]",
+        "---",
+        "# Docs",
+        "Use compact documentation guidance that should be excluded for review tasks.",
+        "",
+      ].join("\n"),
+    );
     return await run(fixtureRoot);
   } finally {
     await rm(fixtureRoot, { recursive: true, force: true });
@@ -255,6 +270,13 @@ describe("brief budget CLI", () => {
         topSavings: expect.any(Array),
         approximate: true,
       });
+      expect(parsed.budget.estimatedTokens).toBe(
+        parsed.estimatedAvoidedContext.selectedTokens +
+          parsed.estimatedAvoidedContext.excludedTokens,
+      );
+      expect(parsed.budget.estimatedTokens).toBeGreaterThan(
+        parsed.estimatedAvoidedContext.selectedTokens,
+      );
     });
   });
 });

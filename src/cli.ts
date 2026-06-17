@@ -11,7 +11,7 @@ import { parseSections, extractCommands, type InstructionSection, type CommandRe
 import { detectFindings, summarizeAvoidableTokens, type Finding } from "./findings.js";
 import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
 import { getChangedFiles, filterToInstructionSources, toPosixPath } from "./gitChanged.js";
-import { pluralize, previewItems } from "./formatting.js";
+import { optionalBlock, pluralize, previewItems } from "./formatting.js";
 import {
   buildContextBudgetReport,
   formatBudgetText,
@@ -228,7 +228,7 @@ export function formatDoctorText(
     ...formatSkillMetadataCount(report.skillMetadata),
     ...formatSources(report.sources),
     ...formatFindings(report.findings, opts.findingsLimit),
-    ...(report.budget === undefined ? [] : ["", ...formatBudgetText(report.budget)]),
+    ...optionalBlock(report.budget, formatBudgetText),
   );
 
   return lines;
@@ -408,7 +408,9 @@ export function createProgram(): Command {
           ? undefined
           : buildContextBudgetReport({
               tokens: budgetTokens,
-              estimatedTokens: suggestResult.estimatedAvoidedContext.selectedTokens,
+              estimatedTokens:
+                suggestResult.estimatedAvoidedContext.selectedTokens +
+                suggestResult.estimatedAvoidedContext.excludedTokens,
               savingsLimit: config.display_limits.suggest_excluded,
             });
         const result = buildBriefResult(

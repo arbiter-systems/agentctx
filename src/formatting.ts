@@ -23,3 +23,10 @@ export function previewItems<T>(items: T[], limit: number): Preview<T> {
 export function sumTokens(items: Array<{ estimatedTokens: number }>): number {
   return items.reduce((total, item) => total + item.estimatedTokens, 0);
 }
+
+export function optionalBlock<T>(
+  value: T | undefined,
+  format: (value: T) => string[],
+): string[] {
+  return value === undefined ? [] : ["", ...format(value)];
+}

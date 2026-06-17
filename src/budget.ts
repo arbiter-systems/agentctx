@@ -1,5 +1,4 @@
 import type { Finding } from "./findings.js";
-import { previewItems } from "./formatting.js";
 
 export type BudgetSavingsOpportunity = {
   code: Finding["code"];
@@ -39,6 +38,49 @@ function opportunityFor(finding: Finding): BudgetSavingsOpportunity | null {
   return opportunity;
 }
 
+function isBudgetSavingsOpportunity(
+  opportunity: BudgetSavingsOpportunity | null,
+): opportunity is BudgetSavingsOpportunity {
+  return opportunity !== null;
+}
+
+function insertTopSavings(
+  topSavings: BudgetSavingsOpportunity[],
+  opportunity: BudgetSavingsOpportunity,
+  limit: number,
+): BudgetSavingsOpportunity[] {
+  const next = [...topSavings, opportunity];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const current = next[index]!;
+    const previous = next[index - 1]!;
+    if (
+      current.estimatedAvoidableTokens <= previous.estimatedAvoidableTokens
+    ) {
+      break;
+    }
+    next[index - 1] = current;
+    next[index] = previous;
+  }
+
+  return next.length > limit ? next.slice(0, limit) : next;
+}
+
+function topSavingsFromFindings(
+  findings: Finding[],
+  limit: number,
+): BudgetSavingsOpportunity[] {
+  if (limit <= 0) return [];
+
+  return findings
+    .map(opportunityFor)
+    .filter(isBudgetSavingsOpportunity)
+    .reduce<BudgetSavingsOpportunity[]>(
+      (topSavings, opportunity) =>
+        insertTopSavings(topSavings, opportunity, limit),
+      [],
+    );
+}
+
 export function buildContextBudgetReport(input: {
   tokens: number;
   estimatedTokens: number;
@@ -46,22 +88,17 @@ export function buildContextBudgetReport(input: {
   savingsLimit?: number;
 }): ContextBudgetReport {
   const deltaTokens = input.estimatedTokens - input.tokens;
-  const opportunities = (input.findings ?? [])
-    .flatMap((finding) => {
-      const opportunity = opportunityFor(finding);
-      return opportunity === null ? [] : [opportunity];
-    })
-    .sort((left, right) =>
-      right.estimatedAvoidableTokens - left.estimatedAvoidableTokens,
-    );
-  const { visible } = previewItems(opportunities, input.savingsLimit ?? 5);
+  const topSavings = topSavingsFromFindings(
+    input.findings ?? [],
+    input.savingsLimit ?? 5,
+  );
 
   return {
     tokens: input.tokens,
     estimatedTokens: input.estimatedTokens,
     deltaTokens,
     status: statusFor(deltaTokens),
-    topSavings: visible,
+    topSavings,
     approximate: true,
   };
 }
