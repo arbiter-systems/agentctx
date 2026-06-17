@@ -1,4 +1,3 @@
-import { access } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 
@@ -16,13 +15,18 @@ export type InstructionSource = {
   scopePath: string;
 };
 
-const knownSources = [
-  { path: "AGENTS.md", kind: "agents" },
-  { path: "CLAUDE.md", kind: "claude" },
-  { path: "GEMINI.md", kind: "gemini" },
-  { path: "agentctx.yml", kind: "config" },
-  { path: ".github/copilot-instructions.md", kind: "copilot" },
-] as const;
+export type DiscoveryOptions = {
+  include?: string[];
+  exclude?: string[];
+};
+
+const defaultInclude = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "GEMINI.md",
+  ".github/copilot-instructions.md",
+  "**/SKILL.md",
+];
 
 const ignoredDirectoryNames = [
   ".git",
@@ -39,57 +43,40 @@ const ignoredDirectoryNames = [
 // **/dir/** matches root-level dir in fast-glob (** matches zero segments)
 const ignoredDirectories = ignoredDirectoryNames.map((d) => `**/${d}/**`);
 
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch (err: unknown) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (
-      code === "ENOENT" ||
-      code === "ENOTDIR" ||
-      code === "EACCES" ||
-      code === "EPERM"
-    ) {
-      return false;
-    }
-    throw err;
-  }
-}
-
 function toPosixPath(value: string): string {
   return value.split(path.sep).join("/");
 }
 
 function scopePathFor(filePath: string): string {
+  if (filePath === ".github/copilot-instructions.md") return ".";
   const directory = path.dirname(filePath);
   return directory === "." ? "." : toPosixPath(directory);
 }
 
+function kindForPath(filePath: string): InstructionSourceKind {
+  if (filePath === ".github/copilot-instructions.md") return "copilot";
+  if (filePath === "agentctx.yml") return "config";
+  if (filePath.endsWith("/SKILL.md") || filePath === "SKILL.md") return "skill";
+  if (path.posix.basename(filePath) === "AGENTS.md") return "agents";
+  if (path.posix.basename(filePath) === "CLAUDE.md") return "claude";
+  if (path.posix.basename(filePath) === "GEMINI.md") return "gemini";
+  return "agents";
+}
+
 export async function discoverInstructionSources(
   cwd = process.cwd(),
+  opts: DiscoveryOptions = {},
 ): Promise<InstructionSource[]> {
-  const rootResults = await Promise.all(
-    knownSources.map(async (source) => {
-      const absolutePath = path.join(cwd, source.path);
-      return (await fileExists(absolutePath))
-        ? { path: source.path, kind: source.kind, scopePath: "." }
-        : null;
-    }),
-  );
-
-  const sources: InstructionSource[] = [];
-  for (const source of rootResults) {
-    if (source) sources.push(source);
-  }
-
-  let skillFiles: string[];
+  const include = opts.include ?? defaultInclude;
+  const exclude = [...ignoredDirectories, ...(opts.exclude ?? [])];
+  let files: string[];
   try {
-    skillFiles = await fg("**/SKILL.md", {
+    files = await fg(include, {
       cwd,
       onlyFiles: true,
       dot: true,
-      ignore: ignoredDirectories,
+      ignore: exclude,
+      unique: true,
     });
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -99,16 +86,11 @@ export async function discoverInstructionSources(
     throw err;
   }
 
-  skillFiles.sort((a, b) => a.localeCompare(b, "en"));
+  files = files.map(toPosixPath).sort((a, b) => a.localeCompare(b, "en"));
 
-  for (const skillFile of skillFiles) {
-    const normalizedPath = toPosixPath(skillFile);
-    sources.push({
-      path: normalizedPath,
-      kind: "skill",
-      scopePath: scopePathFor(normalizedPath),
-    });
-  }
-
-  return sources;
+  return files.map((file) => ({
+    path: file,
+    kind: kindForPath(file),
+    scopePath: scopePathFor(file),
+  }));
 }

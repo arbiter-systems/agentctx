@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { buildDoctorReport, createProgram, formatDoctorText } from "../src/cli.js";
 
@@ -130,5 +133,24 @@ describe("doctor command", () => {
       sources: expect.any(Array),
       findings: expect.any(Array)
     });
+  });
+
+  it("sets exit code 2 for invalid config", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "agentctx-cli-config-"));
+    const savedExitCode = process.exitCode;
+    process.exitCode = 0;
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(process, "cwd").mockReturnValue(cwd);
+
+    try {
+      await writeFile(path.join(cwd, "agentctx.yml"), "version: invalid\n");
+      await createProgram().parseAsync(["node", "agentctx", "doctor"]);
+
+      expect(process.exitCode).toBe(2);
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("agentctx.yml"));
+    } finally {
+      process.exitCode = savedExitCode;
+      await rm(cwd, { force: true, recursive: true });
+    }
   });
 });

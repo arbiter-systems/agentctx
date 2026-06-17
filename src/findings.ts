@@ -29,6 +29,31 @@ export type FindingCode =
   | "missing-skill-purpose"
   | "missing-skill-trigger";
 
+export const VALID_FINDING_CODES = [
+  "duplicate-guidance",
+  "duplicate-command",
+  "duplicate-heading",
+  "oversized-source",
+  "oversized-section",
+  "high-token-waste-source",
+  "risky-validation-command",
+  "unbounded-command",
+  "restore-heavy-command",
+  "full-repo-format-command",
+  "conflicting-branch-target",
+  "conflicting-pr-target",
+  "conflicting-validation-guidance",
+  "conflicting-format-guidance",
+  "conflicting-delegation-guidance",
+  "conflicting-destructive-action-guidance",
+  "missing-branch-guidance",
+  "missing-pr-guidance",
+  "missing-validation-guidance",
+  "missing-destructive-command-guidance",
+  "missing-skill-purpose",
+  "missing-skill-trigger",
+] as const satisfies readonly FindingCode[];
+
 export type ConflictSignal = {
   kind:
     | "branch-target"
@@ -66,6 +91,18 @@ const SOURCE_WARNING_TOKENS = 1200;
 const SOURCE_HIGH_TOKENS = 2000;
 const HIGH_TOKEN_WASTE_SOURCE_TOKENS = 3000;
 const SECTION_WARNING_TOKENS = 500;
+
+export type TokenThresholds = {
+  source_warning: number;
+  source_high: number;
+  section_warning: number;
+};
+
+const DEFAULT_TOKEN_THRESHOLDS: TokenThresholds = {
+  source_warning: SOURCE_WARNING_TOKENS,
+  source_high: SOURCE_HIGH_TOKENS,
+  section_warning: SECTION_WARNING_TOKENS,
+};
 
 type LocatedValue = {
   normalized: string;
@@ -218,7 +255,10 @@ function duplicateFindings(
   return findings;
 }
 
-function sourceSizeFindings(sources: AnalyzedInstructionSource[]): Finding[] {
+function sourceSizeFindings(
+  sources: AnalyzedInstructionSource[],
+  tokenThresholds: TokenThresholds,
+): Finding[] {
   const findings: Finding[] = [];
 
   for (const source of sources) {
@@ -232,13 +272,13 @@ function sourceSizeFindings(sources: AnalyzedInstructionSource[]): Finding[] {
           source.estimatedTokens - HIGH_TOKEN_WASTE_SOURCE_TOKENS,
         hint: "Prioritize reducing or scoping this file before adding more guidance.",
       });
-    } else if (source.estimatedTokens >= SOURCE_WARNING_TOKENS) {
+    } else if (source.estimatedTokens >= tokenThresholds.source_warning) {
       findings.push({
         code: "oversized-source",
-        severity: source.estimatedTokens >= SOURCE_HIGH_TOKENS ? "high" : "medium",
+        severity: source.estimatedTokens >= tokenThresholds.source_high ? "high" : "medium",
         message: "Instruction source is larger than the recommended size.",
         sourcePath: source.path,
-        estimatedAvoidableTokens: source.estimatedTokens - SOURCE_WARNING_TOKENS,
+        estimatedAvoidableTokens: source.estimatedTokens - tokenThresholds.source_warning,
         hint: "Split broad guidance into smaller scoped instruction files.",
       });
     }
@@ -247,9 +287,12 @@ function sourceSizeFindings(sources: AnalyzedInstructionSource[]): Finding[] {
   return findings;
 }
 
-function sectionSizeFindings(sections: InstructionSection[]): Finding[] {
+function sectionSizeFindings(
+  sections: InstructionSection[],
+  tokenThresholds: TokenThresholds,
+): Finding[] {
   return sections
-    .filter((section) => section.estimatedTokens >= SECTION_WARNING_TOKENS)
+    .filter((section) => section.estimatedTokens >= tokenThresholds.section_warning)
     .map((section) => ({
       code: "oversized-section" as const,
       severity: "medium" as const,
@@ -257,7 +300,7 @@ function sectionSizeFindings(sections: InstructionSection[]): Finding[] {
       sourcePath: section.sourcePath,
       lineStart: section.lineStart,
       lineEnd: section.lineEnd,
-      estimatedAvoidableTokens: section.estimatedTokens - SECTION_WARNING_TOKENS,
+      estimatedAvoidableTokens: section.estimatedTokens - tokenThresholds.section_warning,
       hint: "Split this section into narrower task-specific guidance.",
     }));
 }
@@ -829,7 +872,8 @@ export function detectFindings(input: {
   sources: AnalyzedInstructionSource[];
   sections: InstructionSection[];
   commands: CommandRecord[];
-}): Finding[] {
+}, opts: { tokenThresholds?: TokenThresholds } = {}): Finding[] {
+  const tokenThresholds = opts.tokenThresholds ?? DEFAULT_TOKEN_THRESHOLDS;
   const fencedCommands = input.commands.filter((command) => command.kind === "fenced");
   const signals = extractConflictSignals({
     sections: input.sections,
@@ -888,8 +932,8 @@ export function detectFindings(input: {
       "Heading repeats elsewhere.",
       "Rename repeated headings or merge overlapping sections.",
     ),
-    ...sourceSizeFindings(input.sources),
-    ...sectionSizeFindings(input.sections),
+    ...sourceSizeFindings(input.sources, tokenThresholds),
+    ...sectionSizeFindings(input.sections, tokenThresholds),
     ...detectMissingGuidance({
       sources: input.sources,
       sections: input.sections,
