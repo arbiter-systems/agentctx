@@ -354,9 +354,32 @@ function trimPromptToBudget(prompt: string, maxPromptTokens: number | undefined)
   let compact = lines.join("\n");
   if (estimateTokens(compact) <= maxPromptTokens) return compact;
 
-  const maxChars = Math.max(40, maxPromptTokens * 4);
-  compact = compact.slice(0, maxChars).trimEnd();
-  return `${compact}\n[Prompt truncated to ${maxPromptTokens} tokens]`;
+  const marker = `[Prompt truncated to ${maxPromptTokens} tokens]`;
+  if (estimateTokens(marker) >= maxPromptTokens) {
+    return trimTextToTokenBudget(compact, maxPromptTokens);
+  }
+
+  compact = trimTextToTokenBudget(
+    compact,
+    maxPromptTokens - estimateTokens(marker),
+  );
+  let withMarker = `${compact}\n${marker}`.trim();
+  while (estimateTokens(withMarker) > maxPromptTokens && compact.length > 0) {
+    compact = compact.slice(0, -1).trimEnd();
+    withMarker = `${compact}\n${marker}`.trim();
+  }
+
+  return estimateTokens(withMarker) <= maxPromptTokens
+    ? withMarker
+    : trimTextToTokenBudget(marker, maxPromptTokens);
+}
+
+function trimTextToTokenBudget(text: string, maxTokens: number): string {
+  let trimmed = text.slice(0, Math.max(0, maxTokens * 4)).trimEnd();
+  while (estimateTokens(trimmed) > maxTokens && trimmed.length > 0) {
+    trimmed = trimmed.slice(0, -1).trimEnd();
+  }
+  return trimmed;
 }
 
 function computeAvoidedContext(

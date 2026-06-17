@@ -12,6 +12,7 @@ import {
   type SuggestResult,
 } from "../src/suggest.js";
 import { createProgram } from "../src/cli.js";
+import { estimateTokens } from "../src/tokenEstimate.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -276,7 +277,7 @@ describe("selectCandidates", () => {
       defaultBranch: "dev",
     });
 
-    expect(result.prompt.length).toBeLessThan(200);
+    expect(estimateTokens(result.prompt)).toBeLessThanOrEqual(20);
     expect(result.prompt).toContain("20 tokens");
   });
 
