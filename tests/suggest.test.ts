@@ -403,7 +403,7 @@ afterEach(() => {
 describe("suggest command — text output", () => {
   it("prints compact text output", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    await createProgram().parseAsync(["node", "agentctx", "suggest", "audit issue 330 against dev"]);
+    await createProgram().parseAsync(["node", "instructov", "suggest", "audit issue 330 against dev"]);
     expect(log).toHaveBeenCalled();
     const output = log.mock.calls.map((c) => String(c[0])).join("\n");
     expect(output).toContain("audit");
@@ -414,7 +414,7 @@ describe("suggest command — text output", () => {
 describe("suggest command — JSON output", () => {
   it("outputs valid JSON with classification and scoring fields", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    await createProgram().parseAsync(["node", "agentctx", "suggest", "review PR 21", "--json"]);
+    await createProgram().parseAsync(["node", "instructov", "suggest", "review PR 21", "--json"]);
     expect(log).toHaveBeenCalledOnce();
     const parsed = JSON.parse(String(log.mock.calls[0]?.[0]));
     expect(parsed).toMatchObject({
@@ -430,7 +430,7 @@ describe("suggest command — JSON output", () => {
 
   it("JSON selected candidates include score and reasons", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    await createProgram().parseAsync(["node", "agentctx", "suggest", "audit issue 330", "--json"]);
+    await createProgram().parseAsync(["node", "instructov", "suggest", "audit issue 330", "--json"]);
     const parsed = JSON.parse(String(log.mock.calls[0]?.[0]));
     for (const c of parsed.selected as unknown[]) {
       expect(c).toMatchObject({
@@ -445,7 +445,7 @@ describe("suggest command — JSON output", () => {
 
   it("JSON output includes prompt, route, and estimatedAvoidedContext", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    await createProgram().parseAsync(["node", "agentctx", "suggest", "review PR 344 for security issues", "--json"]);
+    await createProgram().parseAsync(["node", "instructov", "suggest", "review PR 344 for security issues", "--json"]);
     const parsed = JSON.parse(String(log.mock.calls[0]?.[0]));
     expect(parsed).toMatchObject({
       prompt: expect.any(String),
@@ -460,7 +460,7 @@ describe("suggest command — JSON output", () => {
 
   it("JSON review prompt is compact and does not include full skill body", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    await createProgram().parseAsync(["node", "agentctx", "suggest", "review PR 344 for security issues", "--json"]);
+    await createProgram().parseAsync(["node", "instructov", "suggest", "review PR 344 for security issues", "--json"]);
     const parsed = JSON.parse(String(log.mock.calls[0]?.[0]));
     expect(typeof parsed.prompt).toBe("string");
     expect(parsed.prompt.length).toBeLessThan(1400);
@@ -469,7 +469,7 @@ describe("suggest command — JSON output", () => {
 
   it("JSON audit prompt targets correct route", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    await createProgram().parseAsync(["node", "agentctx", "suggest", "audit issue 330 against dev", "--json"]);
+    await createProgram().parseAsync(["node", "instructov", "suggest", "audit issue 330 against dev", "--json"]);
     const parsed = JSON.parse(String(log.mock.calls[0]?.[0]));
     expect(parsed.route).toBe("audit");
     expect(parsed.prompt).toContain("audit issue 330 against dev");

@@ -14,7 +14,7 @@ import { createProgram } from "../src/cli.js";
 import { buildSuggestResultForTask, selectCandidates } from "../src/suggest.js";
 
 async function withBriefFixture<T>(run: (fixtureRoot: string) => Promise<T>): Promise<T> {
-  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "agentctx-brief-"));
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "instructov-brief-"));
 
   try {
     await mkdir(path.join(fixtureRoot, "skills", "security-review"), { recursive: true });
@@ -107,7 +107,7 @@ describe("brief command", () => {
 
       await createProgram().parseAsync([
         "node",
-        "agentctx",
+        "instructov",
         "brief",
         "review PR 31 for security",
       ]);
@@ -131,7 +131,7 @@ describe("brief command", () => {
 
       await createProgram().parseAsync([
         "node",
-        "agentctx",
+        "instructov",
         "brief",
         "review PR 31 for security",
         "--json",
@@ -187,7 +187,7 @@ describe("brief command", () => {
       await buildSuggestResultForTask(fixtureRoot, "review PR 31 for security");
 
       await expect(
-        readFile(path.join(fixtureRoot, ".agentctx", "cache.json"), "utf8"),
+        readFile(path.join(fixtureRoot, ".instructov", "cache.json"), "utf8"),
       ).rejects.toMatchObject({ code: "ENOENT" });
     });
   });

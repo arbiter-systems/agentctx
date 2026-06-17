@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { VALID_FINDING_CODES } from "./findings.js";
 
-const CONFIG_FILE_NAME = "agentctx.yml";
+const CONFIG_FILE_NAME = "instructov.yml";
 
 const positiveInteger = z.number().int().positive();
 
@@ -47,7 +47,7 @@ const configSchema = z.object({
   display_limits: displayLimitsSchema.optional(),
 }).strict();
 
-export type AgentctxConfig = {
+export type instructovConfig = {
   version: "v0alpha1";
   discovery: {
     include: string[];
@@ -85,7 +85,7 @@ export class ConfigError extends Error {
   }
 }
 
-export const DEFAULT_AGENTCTX_CONFIG: AgentctxConfig = {
+export const DEFAULT_instructov_CONFIG: instructovConfig = {
   version: "v0alpha1",
   discovery: {
     include: [
@@ -139,19 +139,19 @@ type ParseContext = {
   index: number;
 };
 
-function cloneDefaultConfig(): AgentctxConfig {
+function cloneDefaultConfig(): instructovConfig {
   return {
-    version: DEFAULT_AGENTCTX_CONFIG.version,
+    version: DEFAULT_instructov_CONFIG.version,
     discovery: {
-      include: [...DEFAULT_AGENTCTX_CONFIG.discovery.include],
-      exclude: [...DEFAULT_AGENTCTX_CONFIG.discovery.exclude],
+      include: [...DEFAULT_instructov_CONFIG.discovery.include],
+      exclude: [...DEFAULT_instructov_CONFIG.discovery.exclude],
     },
     doctor: {
-      token_thresholds: { ...DEFAULT_AGENTCTX_CONFIG.doctor.token_thresholds },
-      fail_on: [...DEFAULT_AGENTCTX_CONFIG.doctor.fail_on],
+      token_thresholds: { ...DEFAULT_instructov_CONFIG.doctor.token_thresholds },
+      fail_on: [...DEFAULT_instructov_CONFIG.doctor.fail_on],
     },
-    suggest: { ...DEFAULT_AGENTCTX_CONFIG.suggest },
-    display_limits: { ...DEFAULT_AGENTCTX_CONFIG.display_limits },
+    suggest: { ...DEFAULT_instructov_CONFIG.suggest },
+    display_limits: { ...DEFAULT_instructov_CONFIG.display_limits },
   };
 }
 
@@ -335,7 +335,7 @@ function assignDefined<
   }
 }
 
-function mergeConfig(partial: PartialConfig): AgentctxConfig {
+function mergeConfig(partial: PartialConfig): instructovConfig {
   const merged = cloneDefaultConfig();
 
   assignDefined(partial.discovery, merged.discovery, [
@@ -372,7 +372,7 @@ function mergeConfig(partial: PartialConfig): AgentctxConfig {
   return merged;
 }
 
-export async function loadAgentctxConfig(cwd: string): Promise<AgentctxConfig> {
+export async function loadinstructovConfig(cwd: string): Promise<instructovConfig> {
   let text: string;
   try {
     text = await readFile(path.join(cwd, CONFIG_FILE_NAME), "utf8");

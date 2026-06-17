@@ -45,7 +45,7 @@ describe("formatDoctorText", () => {
       findings: [],
       skillMetadata: []
     })).toEqual([
-      "agentctx doctor",
+      "instructov doctor",
       "Discovered 1 instruction source.",
       "Estimated instruction surface: ~42 tokens.",
       "Detected 0 findings.",
@@ -117,7 +117,7 @@ describe("doctor command", () => {
   it("prints JSON when requested", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await createProgram().parseAsync(["node", "agentctx", "doctor", "--json"]);
+    await createProgram().parseAsync(["node", "instructov", "doctor", "--json"]);
 
     expect(log).toHaveBeenCalledOnce();
     expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
@@ -136,18 +136,18 @@ describe("doctor command", () => {
   });
 
   it("sets exit code 2 for invalid config", async () => {
-    const cwd = await mkdtemp(path.join(tmpdir(), "agentctx-cli-config-"));
+    const cwd = await mkdtemp(path.join(tmpdir(), "instructov-cli-config-"));
     const savedExitCode = process.exitCode;
     process.exitCode = 0;
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.spyOn(process, "cwd").mockReturnValue(cwd);
 
     try {
-      await writeFile(path.join(cwd, "agentctx.yml"), "version: invalid\n");
-      await createProgram().parseAsync(["node", "agentctx", "doctor"]);
+      await writeFile(path.join(cwd, "instructov.yml"), "version: invalid\n");
+      await createProgram().parseAsync(["node", "instructov", "doctor"]);
 
       expect(process.exitCode).toBe(2);
-      expect(error).toHaveBeenCalledWith(expect.stringContaining("agentctx.yml"));
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("instructov.yml"));
     } finally {
       process.exitCode = savedExitCode;
       await rm(cwd, { force: true, recursive: true });

@@ -9,13 +9,13 @@ import { CACHE_VERSION, loadCache } from "../src/cache.js";
 
 describe("analyzeInstructionSources", () => {
   it("evicts cache entries for sources that are no longer discovered", async () => {
-    const cwd = await mkdtemp(path.join(tmpdir(), "agentctx-cache-"));
+    const cwd = await mkdtemp(path.join(tmpdir(), "instructov-cache-"));
 
     try {
-      await mkdir(path.join(cwd, ".agentctx"), { recursive: true });
+      await mkdir(path.join(cwd, ".instructov"), { recursive: true });
       await writeFile(path.join(cwd, "AGENTS.md"), "Use focused guidance.\n");
       await writeFile(
-        path.join(cwd, ".agentctx", "cache.json"),
+        path.join(cwd, ".instructov", "cache.json"),
         JSON.stringify(
           {
             entries: {

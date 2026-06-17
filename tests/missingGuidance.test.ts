@@ -41,7 +41,7 @@ async function withPreparedGuidanceFixture<T>(
   fixture: string,
   run: (fixtureRoot: string) => Promise<T>,
 ): Promise<T> {
-  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "agentctx-missing-guidance-"));
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "instructov-missing-guidance-"));
 
   try {
     await cp(path.join(fixturesRoot, fixture), fixtureRoot, { recursive: true });
@@ -58,7 +58,7 @@ async function withSkillFixture<T>(
   skillText: string,
   run: (fixtureRoot: string) => Promise<T>,
 ): Promise<T> {
-  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "agentctx-missing-skill-"));
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "instructov-missing-skill-"));
 
   try {
     await mkdir(path.join(fixtureRoot, "skills", "review"), { recursive: true });

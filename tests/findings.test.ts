@@ -19,7 +19,7 @@ const oversizedSentence =
 async function withFindingsFixture<T>(
   run: (fixtureRoot: string) => Promise<T>,
 ): Promise<T> {
-  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "agentctx-findings-"));
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "instructov-findings-"));
 
   try {
     await mkdir(path.join(fixtureRoot, "skills", "large"), { recursive: true });
@@ -146,11 +146,11 @@ describe("doctor findings", () => {
   });
 
   it("uses configured doctor thresholds for oversized findings", async () => {
-    const fixtureRoot = await mkdtemp(path.join(tmpdir(), "agentctx-thresholds-"));
+    const fixtureRoot = await mkdtemp(path.join(tmpdir(), "instructov-thresholds-"));
 
     try {
       await writeFile(
-        path.join(fixtureRoot, "agentctx.yml"),
+        path.join(fixtureRoot, "instructov.yml"),
         [
           "version: v0alpha1",
           "doctor:",

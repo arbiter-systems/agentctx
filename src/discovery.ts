@@ -55,7 +55,7 @@ function scopePathFor(filePath: string): string {
 
 function kindForPath(filePath: string): InstructionSourceKind {
   if (filePath === ".github/copilot-instructions.md") return "copilot";
-  if (filePath === "agentctx.yml") return "config";
+  if (filePath === "instructov.yml") return "config";
   if (filePath.endsWith("/SKILL.md") || filePath === "SKILL.md") return "skill";
   if (path.posix.basename(filePath) === "AGENTS.md") return "agents";
   if (path.posix.basename(filePath) === "CLAUDE.md") return "claude";

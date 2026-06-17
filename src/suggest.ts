@@ -2,8 +2,8 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { AnalyzedInstructionSource } from "./analysis.js";
-import type { AgentctxConfig } from "./config.js";
-import { loadAgentctxConfig } from "./config.js";
+import type { instructovConfig } from "./config.js";
+import { loadinstructovConfig } from "./config.js";
 import { discoverInstructionSources } from "./discovery.js";
 import { detectFindings } from "./findings.js";
 import { pluralize, previewItems, sumTokens } from "./formatting.js";
@@ -472,9 +472,9 @@ async function analyzeSourcesInMemory(
 export async function buildSuggestResultForTask(
   cwd: string,
   task: string,
-  config?: AgentctxConfig,
+  config?: instructovConfig,
 ): Promise<SuggestResult> {
-  const resolvedConfig = config ?? await loadAgentctxConfig(cwd);
+  const resolvedConfig = config ?? await loadinstructovConfig(cwd);
   const sources = await discoverInstructionSources(cwd, resolvedConfig.discovery);
   const sourceContents = await readSourceContents(cwd, sources);
   const analyzed = await analyzeSourcesInMemory(cwd, sources, sourceContents);
@@ -572,7 +572,7 @@ export function formatSuggestText(
 ): string[] {
   const { estimatedAvoidedContext: ctx } = result;
   return [
-    `agentctx suggest "${result.input}"`,
+    `instructov suggest "${result.input}"`,
     `Task category: ${result.classification.primaryCategory}`,
     "",
     ...formatSelected(result.selected),

@@ -1,0 +1,20 @@
+{
+  "entries": {
+    "AGENTS.md": {
+      "path": "AGENTS.md",
+      "mtimeMs": 1781642200398.566,
+      "size": 216,
+      "version": "0.1.0",
+      "bytes": 216,
+      "estimatedTokens": 54
+    },
+    "CLAUDE.md": {
+      "path": "CLAUDE.md",
+      "mtimeMs": 1781642200399.566,
+      "size": 237,
+      "version": "0.1.0",
+      "bytes": 237,
+      "estimatedTokens": 60
+    }
+  }
+}
