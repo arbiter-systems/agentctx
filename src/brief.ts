@@ -3,6 +3,8 @@ import type {
   ScoredSuggestCandidate,
   SuggestResult,
 } from "./suggest.js";
+import type { ContextBudgetReport } from "./budget.js";
+import { formatBudgetText } from "./budget.js";
 import { previewItems } from "./formatting.js";
 
 export type BriefGuidance = {
@@ -22,6 +24,7 @@ export type BriefResult = {
   prompt: string;
   route: string;
   estimatedAvoidedContext: EstimatedAvoidedContext;
+  budget?: ContextBudgetReport;
 };
 
 function compactReason(candidate: ScoredSuggestCandidate): string {
@@ -41,7 +44,10 @@ function toBriefGuidance(candidate: ScoredSuggestCandidate): BriefGuidance {
   };
 }
 
-export function buildBriefResult(suggestResult: SuggestResult): BriefResult {
+export function buildBriefResult(
+  suggestResult: SuggestResult,
+  opts: { budget?: ContextBudgetReport } = {},
+): BriefResult {
   return {
     command: "brief",
     task: suggestResult.input,
@@ -50,6 +56,7 @@ export function buildBriefResult(suggestResult: SuggestResult): BriefResult {
     prompt: suggestResult.prompt,
     route: suggestResult.route,
     estimatedAvoidedContext: suggestResult.estimatedAvoidedContext,
+    ...(opts.budget === undefined ? {} : { budget: opts.budget }),
   };
 }
 
@@ -97,5 +104,8 @@ export function formatBriefText(
     ...result.prompt.split("\n"),
     "",
     `Estimated avoided context: ~${result.estimatedAvoidedContext.estimatedAvoidedTokens} tokens`,
+    ...(result.budget === undefined
+      ? []
+      : ["", ...formatBudgetText(result.budget)]),
   ];
 }

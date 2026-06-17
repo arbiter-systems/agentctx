@@ -13,6 +13,11 @@ import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js"
 import { getChangedFiles, filterToInstructionSources, toPosixPath } from "./gitChanged.js";
 import { pluralize, previewItems } from "./formatting.js";
 import {
+  buildContextBudgetReport,
+  formatBudgetText,
+  type ContextBudgetReport,
+} from "./budget.js";
+import {
   buildSuggestResultForTask,
   formatSuggestText,
 } from "./suggest.js";
@@ -42,6 +47,7 @@ export type DoctorReport = {
   findings: Finding[];
   skillMetadata: SkillMetadata[];
   details?: DoctorDetails;
+  budget?: ContextBudgetReport;
   changed?: {
     enabled: boolean;
     changedFiles: string[];
@@ -51,7 +57,12 @@ export type DoctorReport = {
 
 export async function buildDoctorReport(
   cwd = process.cwd(),
-  opts: { details?: boolean; changed?: boolean; config?: AgentctxConfig } = {},
+  opts: {
+    details?: boolean;
+    changed?: boolean;
+    config?: AgentctxConfig;
+    budgetTokens?: number;
+  } = {},
 ): Promise<DoctorReport> {
   const config = opts.config ?? await loadAgentctxConfig(cwd);
   const allSources = await discoverInstructionSources(cwd, config.discovery);
@@ -65,7 +76,7 @@ export async function buildDoctorReport(
     changedMeta = { enabled: true, changedFiles, changedInstructionFiles };
 
     if (changedInstructionFiles.length === 0) {
-      return {
+      const emptyReport: DoctorReport = {
         command: "doctor",
         status: "ok",
         summary: {
@@ -80,6 +91,14 @@ export async function buildDoctorReport(
         skillMetadata: [],
         changed: changedMeta,
       };
+      if (opts.budgetTokens !== undefined) {
+        emptyReport.budget = buildContextBudgetReport({
+          tokens: opts.budgetTokens,
+          estimatedTokens: 0,
+          savingsLimit: config.display_limits.findings,
+        });
+      }
+      return emptyReport;
     }
 
     const changedSet = new Set(changedInstructionFiles);
@@ -147,6 +166,16 @@ export async function buildDoctorReport(
     ...(opts.details
       ? { details: { sections: parsedSections, commands: parsedCommands } }
       : {}),
+    ...(opts.budgetTokens === undefined
+      ? {}
+      : {
+          budget: buildContextBudgetReport({
+            tokens: opts.budgetTokens,
+            estimatedTokens: summary.estimatedTokens,
+            findings,
+            savingsLimit: config.display_limits.findings,
+          }),
+        }),
     ...(changedMeta === undefined ? {} : { changed: changedMeta }),
   };
 }
@@ -162,6 +191,13 @@ function shouldFailDoctor(
 function formatConfigError(err: unknown): string {
   if (err instanceof ConfigError) return err.message;
   return String(err);
+}
+
+function parsePositiveIntegerOption(value: unknown, optionName: string): number {
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) {
+    throw new ConfigError(`${optionName} must be a positive integer.`);
+  }
+  return Number(value);
 }
 
 export function formatDoctorText(
@@ -192,6 +228,7 @@ export function formatDoctorText(
     ...formatSkillMetadataCount(report.skillMetadata),
     ...formatSources(report.sources),
     ...formatFindings(report.findings, opts.findingsLimit),
+    ...(report.budget === undefined ? [] : ["", ...formatBudgetText(report.budget)]),
   );
 
   return lines;
@@ -287,13 +324,23 @@ export function createProgram(): Command {
     .option("--json", "Output JSON")
     .option("--details", "Include parsed sections and commands in output")
     .option("--changed", "Analyze only instruction sources changed in the working tree")
-    .action(async (options: { json?: boolean; details?: boolean; changed?: boolean }) => {
+    .option("--budget <tokens>", "Approximate context budget in tokens")
+    .action(async (options: {
+      json?: boolean;
+      details?: boolean;
+      changed?: boolean;
+      budget?: string;
+    }) => {
       try {
         const config = await loadAgentctxConfig(process.cwd());
+        const budgetTokens = options.budget === undefined
+          ? undefined
+          : parsePositiveIntegerOption(options.budget, "--budget");
         const report = await buildDoctorReport(process.cwd(), {
           details: options.details === true,
           changed: options.changed === true,
           config,
+          ...(budgetTokens === undefined ? {} : { budgetTokens }),
         });
 
         if (shouldFailDoctor(report.findings, config.doctor.fail_on)) {
@@ -348,12 +395,26 @@ export function createProgram(): Command {
     .description("Build a compact task briefing for a coding agent.")
     .argument("<task>", "Task description to brief")
     .option("--json", "Output JSON")
-    .action(async (task: string, options: { json?: boolean }) => {
+    .option("--budget <tokens>", "Approximate task context budget in tokens")
+    .action(async (task: string, options: { json?: boolean; budget?: string }) => {
       try {
         const cwd = process.cwd();
         const config = await loadAgentctxConfig(cwd);
+        const budgetTokens = options.budget === undefined
+          ? undefined
+          : parsePositiveIntegerOption(options.budget, "--budget");
         const suggestResult = await buildSuggestResultForTask(cwd, task, config);
-        const result = buildBriefResult(suggestResult);
+        const budget = budgetTokens === undefined
+          ? undefined
+          : buildContextBudgetReport({
+              tokens: budgetTokens,
+              estimatedTokens: suggestResult.estimatedAvoidedContext.selectedTokens,
+              savingsLimit: config.display_limits.suggest_excluded,
+            });
+        const result = buildBriefResult(
+          suggestResult,
+          budget === undefined ? {} : { budget },
+        );
 
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
