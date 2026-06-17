@@ -1,16 +1,17 @@
 {
-  "name": "agentctx",
+  "name": "instructov",
   "version": "0.1.0",
   "description": "Discover, audit, and streamline AI instruction files for coding agents.",
   "main": "./dist/cli.js",
   "type": "module",
   "bin": {
-    "agentctx": "./dist/cli.js"
+    "instructov": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "node --watch --experimental-strip-types src/cli.ts",
-    "doctor": "npm run build && node dist/cli.js doctor",
+    "dev": "tsx src/cli.ts",
+    "dev:watch": "tsx watch src/cli.ts",
+    "doctor": "tsx src/cli.ts doctor",
     "test": "vitest run --pool threads",
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build"

@@ -266,7 +266,7 @@ describe("doctor --json --details command", () => {
 
     await createProgram().parseAsync([
       "node",
-      "agentctx",
+      "instructov",
       "doctor",
       "--json",
       "--details",
@@ -284,7 +284,7 @@ describe("doctor --json --details command", () => {
   it("omits details from JSON output without --details", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await createProgram().parseAsync(["node", "agentctx", "doctor", "--json"]);
+    await createProgram().parseAsync(["node", "instructov", "doctor", "--json"]);
 
     expect(log).toHaveBeenCalledOnce();
     const output = JSON.parse(String(log.mock.calls[0]?.[0]));
