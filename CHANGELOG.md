@@ -11,6 +11,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added this changelog to track user-facing CLI, documentation, and release changes.
 - Added release documentation for pre-1.0 versioning and release steps.
 - Added a pull request checklist item for changelog updates.
+- Added `instv` as the primary short CLI command while keeping `instructov` as a compatibility alias.
 
 ## [0.1.0] - 2026-06-17
 
