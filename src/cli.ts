@@ -100,6 +100,21 @@ type DoctorSnapshot = {
   sourceContents: ReadonlyMap<string, string>;
 };
 
+type SnapshotOptions = {
+  details?: boolean;
+  verdict?: boolean;
+};
+
+function snapshotOptions(
+  details: boolean | undefined,
+  verdict: boolean | undefined,
+): SnapshotOptions {
+  const opts: SnapshotOptions = {};
+  if (details !== undefined) opts.details = details;
+  if (verdict === true) opts.verdict = true;
+  return opts;
+}
+
 async function readSourceContents(
   cwd: string,
   sources: Array<{ path: string }>,
@@ -126,7 +141,7 @@ function buildSnapshotFromAnalysis(
   analyzed: AnalyzedInstructionSource[],
   sourceContents: ReadonlyMap<string, string>,
   config: instructovConfig,
-  opts: { details?: boolean; verdict?: boolean } = {},
+  opts: SnapshotOptions = {},
 ): DoctorSnapshot {
   const baseSummary = summarize(analyzed);
   const parsedSections: InstructionSection[] = [];
@@ -182,7 +197,7 @@ async function buildCurrentDoctorSnapshot(
   cwd: string,
   sources: InstructionSource[],
   config: instructovConfig,
-  opts: { details?: boolean; verdict?: boolean } = {},
+  opts: SnapshotOptions = {},
 ): Promise<DoctorSnapshot> {
   const sourceContents = await readSourceContents(cwd, sources);
   const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
@@ -210,7 +225,7 @@ async function buildBaselineDoctorSnapshot(
   sources: InstructionSource[],
   baselineRef: string,
   config: instructovConfig,
-  opts: { verdict?: boolean } = {},
+  opts: SnapshotOptions = {},
 ): Promise<DoctorSnapshot> {
   const entries = await Promise.all(
     sources.map(async (source) => {
@@ -302,7 +317,7 @@ async function buildDoctorDiffReport(
   sources: InstructionSource[],
   currentSnapshot: DoctorSnapshot,
   config: instructovConfig,
-  opts: { verdict?: boolean } = {},
+  opts: SnapshotOptions = {},
 ): Promise<DoctorDiffReport> {
   const comparison = await getInstructionDiffComparison(cwd, comparedRef);
   const changedInstructionFiles = filterToInstructionSources(
@@ -405,13 +420,18 @@ export async function buildDoctorReport(
     cwd,
     sources,
     config,
-    opts.details === undefined
-      ? { verdict: opts.verdict }
-      : { details: opts.details, verdict: opts.verdict },
+    snapshotOptions(opts.details, opts.verdict),
   );
   const diff = opts.diffRef === undefined
     ? undefined
-    : await buildDoctorDiffReport(cwd, opts.diffRef, allSources, snapshot, config, { verdict: opts.verdict });
+    : await buildDoctorDiffReport(
+        cwd,
+        opts.diffRef,
+        allSources,
+        snapshot,
+        config,
+        snapshotOptions(undefined, opts.verdict),
+      );
 
   const report: DoctorReport = {
     command: "doctor",
