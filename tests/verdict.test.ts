@@ -49,9 +49,7 @@ describe("doctor --verdict", () => {
   });
 
   it("keeps unsupported findings without a verdict", () => {
-    expect(verdictForFinding(finding("missing-skill-trigger"))).toBe(
-      "Add trigger guidance that says when to use this skill.",
-    );
+    expect(verdictForFinding(finding("missing-skill-trigger"))).toBeUndefined();
   });
 
   it("adds verdicts without mutating original findings", () => {
