@@ -5,6 +5,8 @@ import { sumTokens } from "./formatting.js";
 import { estimateTokens } from "./tokenEstimate.js";
 import { loadCache, saveCache, CACHE_VERSION, type CacheEntry } from "./cache.js";
 
+export const MAX_INSTRUCTION_SOURCE_BYTES = 256 * 1024;
+
 export type AnalyzedInstructionSource = InstructionSource & {
   bytes: number;
   estimatedTokens: number;
@@ -22,6 +24,10 @@ export function summarize(sources: AnalyzedInstructionSource[]): DoctorSummary {
     bytes: sources.reduce((s, src) => s + src.bytes, 0),
     estimatedTokens: sumTokens(sources),
   };
+}
+
+function estimateTokensFromBytes(bytes: number): number {
+  return Math.ceil(bytes / 4);
 }
 
 export function analyzeInstructionSourcesInMemory(
@@ -73,6 +79,19 @@ async function analyzeOne(
     cached.size === fileStat.size
   ) {
     return { analyzed: { ...source, bytes: cached.bytes, estimatedTokens: cached.estimatedTokens }, entry: null };
+  }
+
+  if (fileStat.size > MAX_INSTRUCTION_SOURCE_BYTES) {
+    const tokens = estimateTokensFromBytes(fileStat.size);
+    const entry: CacheEntry = {
+      path: source.path,
+      mtimeMs: fileStat.mtimeMs,
+      size: fileStat.size,
+      version: CACHE_VERSION,
+      bytes: fileStat.size,
+      estimatedTokens: tokens,
+    };
+    return { analyzed: { ...source, bytes: fileStat.size, estimatedTokens: tokens }, entry };
   }
 
   let content = contentByPath.get(source.path);
