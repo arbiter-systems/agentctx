@@ -12,6 +12,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added release documentation for pre-1.0 versioning and release steps.
 - Added a pull request checklist item for changelog updates.
 - Added `instv` as the primary short CLI command while keeping `instructov` as a compatibility alias.
+- Added repo-local `AGENTS.md` guidance for repository-specific AI-assisted work rules.
 
 ### Fixed
 
@@ -41,12 +42,9 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 
 ### Changed
 
-- Renamed the project, package, command, config, cache, docs, tests, and fixtures from `agentctx` to Instructov / `instructov`.
-- Updated README positioning, examples, constraints, workflow documentation, and legacy migration notes for the Instructov naming.
-- Updated local development scripts to use `tsx` for the CLI runner.
+- Renamed the project, package, CLI examples, config file, and cache paths from legacy `agentctx` naming to Instructov naming.
+- Updated public README positioning and Phase 2 issue references for Instructov naming.
 
 ### Fixed
 
-- Fixed linked package binary execution so local linked CLI installs can run correctly.
-- Fixed the dev CLI runner module-resolution path by replacing direct Node TypeScript execution with `tsx`.
-- Hardened discovery and cache behavior around missing, inaccessible, and removed instruction files.
+- Fixed the local development runner to use `tsx` so source imports resolve correctly during `npm run dev`.
