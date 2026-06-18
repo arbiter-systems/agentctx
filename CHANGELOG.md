@@ -12,6 +12,10 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added release documentation for pre-1.0 versioning and release steps.
 - Added a pull request checklist item for changelog updates.
 
+### Fixed
+
+- Removed tracked legacy cache artifacts and ignored local cache directories.
+
 ## [0.1.0] - 2026-06-17
 
 ### Added
