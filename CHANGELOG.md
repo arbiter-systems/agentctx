@@ -13,6 +13,10 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added a pull request checklist item for changelog updates.
 - Added `instv` as the primary short CLI command while keeping `instructov` as a compatibility alias.
 
+### Fixed
+
+- Removed tracked legacy cache artifacts and ignored local cache directories.
+
 ## [0.1.0] - 2026-06-17
 
 ### Added
