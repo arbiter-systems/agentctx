@@ -5,6 +5,7 @@
   "main": "./dist/cli.js",
   "type": "module",
   "bin": {
+    "instv": "./dist/cli.js",
     "instructov": "./dist/cli.js"
   },
   "scripts": {
