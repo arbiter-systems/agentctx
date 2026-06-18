@@ -151,4 +151,6 @@ vite.config.ts.timestamp-*
 .instructov/cache.json
 .instructov/tmp/
 .instructov/*.log
+.agentctx/
+
 .claude/settings.json
