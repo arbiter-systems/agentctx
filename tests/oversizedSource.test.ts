@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -46,6 +46,44 @@ describe("oversized instruction sources", () => {
     const dir = await makeTempRepo();
     const content = "A".repeat(MAX_INSTRUCTION_SOURCE_BYTES + 1);
     await writeFile(join(dir, "AGENTS.md"), content);
+
+    const source: InstructionSource = {
+      path: "AGENTS.md",
+      kind: "agents",
+      scopePath: ".",
+    };
+
+    const [analyzed] = await analyzeInstructionSources([source], dir);
+
+    expect(analyzed).toMatchObject({
+      path: "AGENTS.md",
+      bytes: MAX_INSTRUCTION_SOURCE_BYTES + 1,
+      estimatedTokens: Math.ceil((MAX_INSTRUCTION_SOURCE_BYTES + 1) / 4),
+    });
+  });
+
+  it("ignores stale cache entries for oversized sources", async () => {
+    const dir = await makeTempRepo();
+    const filePath = join(dir, "AGENTS.md");
+    await writeFile(filePath, "A".repeat(MAX_INSTRUCTION_SOURCE_BYTES + 1));
+    const fileStat = await stat(filePath);
+
+    await mkdir(join(dir, ".instructov"));
+    await writeFile(
+      join(dir, ".instructov", "cache.json"),
+      JSON.stringify({
+        entries: {
+          "AGENTS.md": {
+            path: "AGENTS.md",
+            mtimeMs: fileStat.mtimeMs,
+            size: fileStat.size,
+            version: "0.1.0",
+            bytes: fileStat.size,
+            estimatedTokens: 1,
+          },
+        },
+      }),
+    );
 
     const source: InstructionSource = {
       path: "AGENTS.md",

@@ -72,15 +72,6 @@ async function analyzeOne(
     return fallback;
   }
 
-  const cached = cache.get(source.path);
-  if (
-    cached?.version === CACHE_VERSION &&
-    cached.mtimeMs === fileStat.mtimeMs &&
-    cached.size === fileStat.size
-  ) {
-    return { analyzed: { ...source, bytes: cached.bytes, estimatedTokens: cached.estimatedTokens }, entry: null };
-  }
-
   if (fileStat.size > MAX_INSTRUCTION_SOURCE_BYTES) {
     const tokens = estimateTokensFromBytes(fileStat.size);
     const entry: CacheEntry = {
@@ -92,6 +83,15 @@ async function analyzeOne(
       estimatedTokens: tokens,
     };
     return { analyzed: { ...source, bytes: fileStat.size, estimatedTokens: tokens }, entry };
+  }
+
+  const cached = cache.get(source.path);
+  if (
+    cached?.version === CACHE_VERSION &&
+    cached.mtimeMs === fileStat.mtimeMs &&
+    cached.size === fileStat.size
+  ) {
+    return { analyzed: { ...source, bytes: cached.bytes, estimatedTokens: cached.estimatedTokens }, entry: null };
   }
 
   let content = contentByPath.get(source.path);
