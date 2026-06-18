@@ -40,6 +40,7 @@ import {
   loadinstructovConfig,
   type instructovConfig,
 } from "./config.js";
+import { findingVerdict, withVerdicts } from "./verdict.js";
 export type { SuggestResult } from "./suggest.js";
 
 export type DoctorDetails = {
@@ -99,6 +100,21 @@ type DoctorSnapshot = {
   sourceContents: ReadonlyMap<string, string>;
 };
 
+type SnapshotOptions = {
+  details?: boolean;
+  verdict?: boolean;
+};
+
+function snapshotOptions(
+  details: boolean | undefined,
+  verdict: boolean | undefined,
+): SnapshotOptions {
+  const opts: SnapshotOptions = {};
+  if (details !== undefined) opts.details = details;
+  if (verdict === true) opts.verdict = true;
+  return opts;
+}
+
 async function readSourceContents(
   cwd: string,
   sources: Array<{ path: string }>,
@@ -125,7 +141,7 @@ function buildSnapshotFromAnalysis(
   analyzed: AnalyzedInstructionSource[],
   sourceContents: ReadonlyMap<string, string>,
   config: instructovConfig,
-  opts: { details?: boolean } = {},
+  opts: SnapshotOptions = {},
 ): DoctorSnapshot {
   const baseSummary = summarize(analyzed);
   const parsedSections: InstructionSection[] = [];
@@ -141,13 +157,16 @@ function buildSnapshotFromAnalysis(
     parsedCommands.push(...commands);
   }
 
-  const findings = detectFindings({
+  const detectedFindings = detectFindings({
     sources: analyzed,
     sections: parsedSections,
     commands: parsedCommands,
   }, {
     tokenThresholds: config.doctor.token_thresholds,
   });
+  const findings = opts.verdict === true
+    ? withVerdicts(detectedFindings)
+    : detectedFindings;
   const summary: DoctorReport["summary"] = {
     ...baseSummary,
     findingCount: findings.length,
@@ -178,7 +197,7 @@ async function buildCurrentDoctorSnapshot(
   cwd: string,
   sources: InstructionSource[],
   config: instructovConfig,
-  opts: { details?: boolean } = {},
+  opts: SnapshotOptions = {},
 ): Promise<DoctorSnapshot> {
   const sourceContents = await readSourceContents(cwd, sources);
   const analyzed = await analyzeInstructionSources(sources, cwd, sourceContents);
@@ -206,6 +225,7 @@ async function buildBaselineDoctorSnapshot(
   sources: InstructionSource[],
   baselineRef: string,
   config: instructovConfig,
+  opts: SnapshotOptions = {},
 ): Promise<DoctorSnapshot> {
   const entries = await Promise.all(
     sources.map(async (source) => {
@@ -218,7 +238,7 @@ async function buildBaselineDoctorSnapshot(
   );
   const baselineSources = sources.filter((source) => sourceContents.has(source.path));
   const analyzed = analyzeInstructionSourcesInMemory(baselineSources, sourceContents);
-  return buildSnapshotFromAnalysis(analyzed, sourceContents, config);
+  return buildSnapshotFromAnalysis(analyzed, sourceContents, config, opts);
 }
 
 function findingIdentity(finding: Finding): string {
@@ -297,6 +317,7 @@ async function buildDoctorDiffReport(
   sources: InstructionSource[],
   currentSnapshot: DoctorSnapshot,
   config: instructovConfig,
+  opts: SnapshotOptions = {},
 ): Promise<DoctorDiffReport> {
   const comparison = await getInstructionDiffComparison(cwd, comparedRef);
   const changedInstructionFiles = filterToInstructionSources(
@@ -312,10 +333,11 @@ async function buildDoctorDiffReport(
         currentSnapshot.sources.filter((source) => changedSet.has(toPosixPath(source.path))),
         currentSnapshot.sourceContents,
         config,
+        opts,
       );
   const baselineSnapshot = isEmpty
     ? emptySnapshot()
-    : await buildBaselineDoctorSnapshot(cwd, diffSources, comparison.baselineRef, config);
+    : await buildBaselineDoctorSnapshot(cwd, diffSources, comparison.baselineRef, config, opts);
   const { newFindings, resolvedFindings } = diffFindings(
     currentDiffSnapshot.findings,
     baselineSnapshot.findings,
@@ -344,6 +366,7 @@ export async function buildDoctorReport(
     details?: boolean;
     changed?: boolean;
     diffRef?: string;
+    verdict?: boolean;
     config?: instructovConfig;
     budgetTokens?: number;
   } = {},
@@ -397,11 +420,18 @@ export async function buildDoctorReport(
     cwd,
     sources,
     config,
-    opts.details === undefined ? {} : { details: opts.details },
+    snapshotOptions(opts.details, opts.verdict),
   );
   const diff = opts.diffRef === undefined
     ? undefined
-    : await buildDoctorDiffReport(cwd, opts.diffRef, allSources, snapshot, config);
+    : await buildDoctorDiffReport(
+        cwd,
+        opts.diffRef,
+        allSources,
+        snapshot,
+        config,
+        snapshotOptions(undefined, opts.verdict),
+      );
 
   const report: DoctorReport = {
     command: "doctor",
@@ -590,11 +620,15 @@ function formatFindingsBySeverity(findings: Finding[]): string[] {
 
     lines.push(
       `${severity}:`,
-      ...matching.map((finding) => {
+      ...matching.flatMap((finding) => {
         const location = finding.lineStart === undefined
           ? finding.sourcePath
           : `${finding.sourcePath}:${finding.lineStart}`;
-        return `- ${finding.code} ${location} - ${finding.message}`;
+        const findingLine = `- ${finding.code} ${location} - ${finding.message}`;
+        const verdict = findingVerdict(finding);
+        return verdict === undefined
+          ? [findingLine]
+          : [findingLine, `  Verdict: ${verdict}`];
       }),
     );
   }
@@ -624,12 +658,14 @@ export function createProgram(): Command {
     .option("--changed", "Analyze only instruction sources changed in the working tree")
     .option("--diff <ref>", "Compare instruction impact against a git ref")
     .option("--budget <tokens>", "Approximate context budget in tokens")
+    .option("--verdict", "Show no-write verdicts for supported findings")
     .action(async (options: {
       json?: boolean;
       details?: boolean;
       changed?: boolean;
       diff?: string;
       budget?: string;
+      verdict?: boolean;
     }) => {
       try {
         const config = await loadinstructovConfig(process.cwd());
@@ -640,6 +676,7 @@ export function createProgram(): Command {
           details: options.details === true,
           changed: options.changed === true,
           ...(options.diff === undefined ? {} : { diffRef: options.diff }),
+          verdict: options.verdict === true,
           config,
           ...(budgetTokens === undefined ? {} : { budgetTokens }),
         });
