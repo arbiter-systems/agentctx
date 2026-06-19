@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-
 import { Command } from "commander";
 
 import { PRIMARY_COMMAND_NAME } from "./formatting.js";
@@ -258,7 +256,14 @@ export function formatReviewText(report: PromptReviewReport): string[] {
 }
 
 async function readPromptFromStdin(): Promise<string> {
-  return readFile(0, "utf8");
+  let text = "";
+  for await (const chunk of process.stdin) text += String(chunk);
+  return text;
+}
+
+function writeReviewInputError(message: string): void {
+  process.exitCode = 2;
+  console.error(message);
 }
 
 export function addReviewCommand(program: Command): void {
@@ -270,12 +275,16 @@ export function addReviewCommand(program: Command): void {
     .option("--profile <profile>", "Review profile: coding-task, code-review, planning, or general", "general")
     .action(async (options: { stdin?: boolean; json?: boolean; profile?: string }) => {
       if (options.stdin !== true) {
-        throw new Error("Prompt text must be supplied through stdin. Use: instv review --stdin");
+        writeReviewInputError("Prompt text must be supplied through stdin. Use: instv review --stdin");
+        return;
       }
 
       const profile = options.profile ?? "general";
       if (!isReviewProfile(profile)) {
-        throw new Error(`Invalid review profile: ${profile}. Choose one of: ${REVIEW_PROFILES.join(", ")}.`);
+        writeReviewInputError(
+          `Invalid review profile: ${profile}. Choose one of: ${REVIEW_PROFILES.join(", ")}.`,
+        );
+        return;
       }
 
       const report = reviewPrompt(await readPromptFromStdin(), { profile });
