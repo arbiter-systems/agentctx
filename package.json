@@ -5,14 +5,14 @@
   "main": "./dist/cli.js",
   "type": "module",
   "bin": {
-    "instv": "./dist/cli.js",
-    "instructov": "./dist/cli.js"
+    "instv": "./dist/instv.js",
+    "instructov": "./dist/instv.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx src/cli.ts",
-    "dev:watch": "tsx watch src/cli.ts",
-    "doctor": "tsx src/cli.ts doctor",
+    "dev": "tsx src/instv.ts",
+    "dev:watch": "tsx watch src/instv.ts",
+    "doctor": "tsx src/instv.ts doctor",
     "test": "vitest run --pool threads",
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build"
