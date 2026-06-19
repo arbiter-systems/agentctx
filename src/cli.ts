@@ -25,7 +25,12 @@ import {
 import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
 import { getChangedFiles, filterToInstructionSources, toPosixPath } from "./gitChanged.js";
 import { getInstructionDiffComparison, readGitFile } from "./gitDiff.js";
-import { optionalBlock, pluralize, previewItems } from "./formatting.js";
+import {
+  optionalBlock,
+  pluralize,
+  previewItems,
+  PRIMARY_COMMAND_NAME,
+} from "./formatting.js";
 import {
   buildContextBudgetReport,
   formatBudgetText,
@@ -502,7 +507,11 @@ export function formatDoctorText(
   const { summary, changed } = report;
   const isChanged = changed?.enabled === true;
 
-  const lines: string[] = [isChanged ? "instructov doctor --changed" : "instructov doctor"];
+  const lines: string[] = [
+    isChanged
+      ? `${PRIMARY_COMMAND_NAME} doctor --changed`
+      : `${PRIMARY_COMMAND_NAME} doctor`,
+  ];
 
   if (isChanged && changed) {
     lines.push(
@@ -652,7 +661,7 @@ export function createProgram(): Command {
   const program = new Command();
 
   program
-    .name("instructov")
+    .name(PRIMARY_COMMAND_NAME)
     .description("Audit and streamline AI instruction files for coding agents.")
     .version("0.1.0");
 

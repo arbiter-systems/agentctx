@@ -128,7 +128,7 @@ describe("doctor --changed: text output", () => {
     const report = await buildDoctorReport(dir, { changed: true });
     const lines = formatDoctorText(report);
 
-    expect(lines[0]).toBe("instructov doctor --changed");
+    expect(lines[0]).toBe("instv doctor --changed");
   });
 
   it("prints no changed instruction sources when nothing relevant changed", async () => {
@@ -139,7 +139,7 @@ describe("doctor --changed: text output", () => {
     const lines = formatDoctorText(report);
 
     expect(lines).toContain("No changed instruction sources found.");
-    expect(lines[0]).toBe("instructov doctor --changed");
+    expect(lines[0]).toBe("instv doctor --changed");
   });
 });
 
@@ -238,7 +238,7 @@ describe("doctor --changed: exit codes", () => {
 });
 
 describe("formatDoctorText: changed mode off (regression)", () => {
-  it("uses instructov doctor header when changed is not set", () => {
+  it("uses instv doctor header when changed is not set", () => {
     const report = {
       command: "doctor" as const,
       status: "ok" as const,
@@ -254,6 +254,6 @@ describe("formatDoctorText: changed mode off (regression)", () => {
       skillMetadata: [],
     };
     const lines = formatDoctorText(report);
-    expect(lines[0]).toBe("instructov doctor");
+    expect(lines[0]).toBe("instv doctor");
   });
 });

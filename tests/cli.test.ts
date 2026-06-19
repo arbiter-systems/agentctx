@@ -9,6 +9,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("createProgram", () => {
+  it("uses instv as the primary command identity", () => {
+    expect(createProgram().name()).toBe("instv");
+  });
+
+  it("identifies instv in shared program help", () => {
+    expect(createProgram().helpInformation()).toContain(
+      "Usage: instv [options] [command]",
+    );
+  });
+});
+
 describe("buildDoctorReport", () => {
   it("returns the discovered source report", async () => {
     await expect(buildDoctorReport()).resolves.toMatchObject({
@@ -45,7 +57,7 @@ describe("formatDoctorText", () => {
       findings: [],
       skillMetadata: []
     })).toEqual([
-      "instructov doctor",
+      "instv doctor",
       "Discovered 1 instruction source.",
       "Estimated instruction surface: ~42 tokens.",
       "Detected 0 findings.",

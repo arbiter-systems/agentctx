@@ -6,7 +6,12 @@ import type { instructovConfig } from "./config.js";
 import { loadinstructovConfig } from "./config.js";
 import { discoverInstructionSources } from "./discovery.js";
 import { detectFindings } from "./findings.js";
-import { pluralize, previewItems, sumTokens } from "./formatting.js";
+import {
+  pluralize,
+  previewItems,
+  sumTokens,
+  PRIMARY_COMMAND_NAME,
+} from "./formatting.js";
 import {
   extractCommands,
   parseSections,
@@ -598,7 +603,7 @@ export function formatSuggestText(
 ): string[] {
   const { estimatedAvoidedContext: ctx } = result;
   return [
-    `instructov suggest "${result.input}"`,
+    `${PRIMARY_COMMAND_NAME} suggest "${result.input}"`,
     `Task category: ${result.classification.primaryCategory}`,
     "",
     ...formatSelected(result.selected),
