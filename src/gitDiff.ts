@@ -17,6 +17,13 @@ export type GitDiffComparison = {
   changedFiles: string[];
 };
 
+type ParsedDiffRef = {
+  comparedRef: string;
+  baseRef: string;
+  diffRef: string;
+  tripleDot: boolean;
+};
+
 function errorText(err: unknown): string {
   const maybeExecError = err as { stderr?: unknown; message?: unknown };
   if (typeof maybeExecError.stderr === "string" && maybeExecError.stderr.trim()) {
@@ -33,13 +40,33 @@ async function gitOutput(args: string[], cwd: string): Promise<string> {
   return stdout;
 }
 
-function parseDiffRef(ref: string): { comparedRef: string; baseRef: string; diffRef: string; tripleDot: boolean } {
+function isSafeRevision(value: string): boolean {
+  return value.length > 0 &&
+    !value.startsWith("-") &&
+    !/[\u0000-\u001f\u007f\s]/.test(value);
+}
+
+function assertSafeRevision(value: string, original: string): void {
+  if (!isSafeRevision(value)) {
+    throw new GitDiffError(
+      `Unsupported diff ref "${original}". Use a non-option git ref without whitespace or control characters.`,
+    );
+  }
+}
+
+export function parseDiffRef(ref: string): ParsedDiffRef {
   const trimmed = ref.trim();
   if (trimmed.length === 0) {
     throw new GitDiffError("--diff requires a non-empty git ref.");
   }
+  if (trimmed !== ref || /[\u0000-\u001f\u007f]/.test(ref)) {
+    throw new GitDiffError(
+      `Unsupported diff ref "${ref}". Use a non-option git ref without whitespace or control characters.`,
+    );
+  }
 
   if (!trimmed.includes("...")) {
+    assertSafeRevision(trimmed, ref);
     return { comparedRef: trimmed, baseRef: trimmed, diffRef: trimmed, tripleDot: false };
   }
 
@@ -58,6 +85,7 @@ function parseDiffRef(ref: string): { comparedRef: string; baseRef: string; diff
   if (headRef !== "HEAD") {
     throw new GitDiffError(`Unsupported diff ref "${ref}". Only <ref>...HEAD is supported.`);
   }
+  assertSafeRevision(baseRef, ref);
 
   return { comparedRef: trimmed, baseRef, diffRef: trimmed, tripleDot: true };
 }
