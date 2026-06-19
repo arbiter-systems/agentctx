@@ -16,6 +16,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 
 ### Fixed
 
+- Clarified that legacy `agentctx.yml` is not loaded and must be renamed to `instructov.yml`.
 - Removed tracked legacy cache artifacts and ignored local cache directories.
 - Fixed `suggest` skill penalties so parsed section and command findings are included.
 
