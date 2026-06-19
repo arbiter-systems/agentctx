@@ -8,6 +8,9 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 
 ### Added
 
+- Added deterministic `instv review --stdin` prompt review with human and JSON output.
+- Added profile-aware prompt checks for coding tasks, code review, planning, and general prompts.
+- Added local high-confidence checks for empty prompts, missing structured objective or validation guidance, duplicate constraints, destructive commands, and likely secrets without displaying matched secret values.
 - Added this changelog to track user-facing CLI, documentation, and release changes.
 - Added release documentation for pre-1.0 versioning and release steps.
 - Added a pull request checklist item for changelog updates.

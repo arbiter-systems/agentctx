@@ -24,6 +24,18 @@ Use `brief` to produce a compact task prompt/loadout without dumping every instr
 instv brief "review PR 31 for security and test gaps"
 ```
 
+## Prompt review
+
+Review prompt text locally before sending it to a coding agent. Supply prompt content through stdin rather than a positional shell argument:
+
+```bash
+printf '%s' 'Implement issue 80. Add tests and run typecheck.' | instv review --stdin --profile coding-task
+```
+
+Use `--json` for integrations. Available profiles are `coding-task`, `code-review`, `planning`, and `general`.
+
+Prompt review is deterministic and advisory. It reports high-confidence checks for empty prompts, missing objective or validation guidance where the selected profile requires them, duplicate constraints, potentially destructive commands, and likely secrets. Secret values are not included in findings. Prompt-size estimates are approximate.
+
 ## Context budget and branch impact
 
 Show approximate instruction-context pressure:
