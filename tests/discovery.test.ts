@@ -1,5 +1,5 @@
 import path from "node:path";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -102,6 +102,35 @@ describe("discoverInstructionSources", () => {
       ]);
     } finally {
       await rm(fixture, { force: true, recursive: true });
+    }
+  });
+
+  it("skips a configured instruction symlink that resolves outside the repository root", async () => {
+    const fixture = await mkdtemp(path.join(tmpdir(), "instructov-discovery-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "instructov-outside-"));
+
+    try {
+      await writeFile(path.join(fixture, "AGENTS.md"), "# Root\n");
+      await writeFile(path.join(outside, "outside.md"), "# Outside\n");
+
+      try {
+        await symlink(path.join(outside, "outside.md"), path.join(fixture, "escaped.md"));
+      } catch (error: unknown) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "EPERM" || code === "EACCES" || code === "ENOSYS") return;
+        throw error;
+      }
+
+      await expect(
+        discoverInstructionSources(fixture, {
+          include: ["AGENTS.md", "escaped.md"],
+        }),
+      ).resolves.toEqual([
+        { path: "AGENTS.md", kind: "agents", scopePath: "." },
+      ]);
+    } finally {
+      await rm(fixture, { force: true, recursive: true });
+      await rm(outside, { force: true, recursive: true });
     }
   });
 });
