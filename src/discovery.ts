@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 
@@ -63,18 +64,44 @@ function kindForPath(filePath: string): InstructionSourceKind {
   return "agents";
 }
 
+export function isWithinRoot(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+async function isSafeSource(root: string, sourcePath: string): Promise<boolean> {
+  try {
+    return isWithinRoot(root, await realpath(path.join(root, sourcePath)));
+  } catch {
+    return false;
+  }
+}
+
 export async function discoverInstructionSources(
   cwd = process.cwd(),
   opts: DiscoveryOptions = {},
 ): Promise<InstructionSource[]> {
+  let root: string;
+  try {
+    root = await realpath(cwd);
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      throw new Error(`cwd does not exist or is not a directory: ${cwd}`);
+    }
+    throw err;
+  }
+
   const include = opts.include ?? defaultInclude;
   const exclude = [...ignoredDirectories, ...(opts.exclude ?? [])];
   let files: string[];
   try {
     files = await fg(include, {
-      cwd,
+      cwd: root,
       onlyFiles: true,
       dot: true,
+      followSymbolicLinks: false,
       ignore: exclude,
       unique: true,
     });
@@ -86,7 +113,13 @@ export async function discoverInstructionSources(
     throw err;
   }
 
-  files = files.map(toPosixPath).sort((a, b) => a.localeCompare(b, "en"));
+  const safeFiles = await Promise.all(
+    files.map(async (file) => ({ file, safe: await isSafeSource(root, file) })),
+  );
+  files = safeFiles
+    .filter((entry) => entry.safe)
+    .map((entry) => toPosixPath(entry.file))
+    .sort((a, b) => a.localeCompare(b, "en"));
 
   return files.map((file) => ({
     path: file,

@@ -20,6 +20,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 
 ### Fixed
 
+- Hardened local Git diff revision input and confined instruction discovery to the repository root.
 - Updated help and human CLI output to use `instv` as the primary identity while retaining `instructov` compatibility.
 - Clarified that legacy `agentctx.yml` is not loaded and must be renamed to `instructov.yml`.
 - Removed tracked legacy cache artifacts and ignored local cache directories.

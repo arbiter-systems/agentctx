@@ -1,16 +1,30 @@
 import path from "node:path";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { discoverInstructionSources } from "../src/discovery.js";
+import { discoverInstructionSources, isWithinRoot } from "../src/discovery.js";
 
 const fixturesRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../fixtures/discovery",
 );
+
+describe("isWithinRoot", () => {
+  const root = path.join(path.sep, "repo");
+
+  it("accepts the repository root and nested candidates", () => {
+    expect(isWithinRoot(root, root)).toBe(true);
+    expect(isWithinRoot(root, path.join(root, "nested", "SKILL.md"))).toBe(true);
+  });
+
+  it("rejects sibling-prefix and parent-directory escapes", () => {
+    expect(isWithinRoot(root, path.join(path.sep, "repo-other", "SKILL.md"))).toBe(false);
+    expect(isWithinRoot(root, path.join(path.sep, "outside", "SKILL.md"))).toBe(false);
+  });
+});
 
 describe("discoverInstructionSources", () => {
   it("detects root-level instruction files", async () => {
@@ -102,6 +116,35 @@ describe("discoverInstructionSources", () => {
       ]);
     } finally {
       await rm(fixture, { force: true, recursive: true });
+    }
+  });
+
+  it("skips a configured instruction symlink that resolves outside the repository root", async () => {
+    const fixture = await mkdtemp(path.join(tmpdir(), "instructov-discovery-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "instructov-outside-"));
+
+    try {
+      await writeFile(path.join(fixture, "AGENTS.md"), "# Root\n");
+      await writeFile(path.join(outside, "outside.md"), "# Outside\n");
+
+      try {
+        await symlink(path.join(outside, "outside.md"), path.join(fixture, "escaped.md"));
+      } catch (error: unknown) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "EPERM" || code === "EACCES" || code === "ENOSYS") return;
+        throw error;
+      }
+
+      await expect(
+        discoverInstructionSources(fixture, {
+          include: ["AGENTS.md", "escaped.md"],
+        }),
+      ).resolves.toEqual([
+        { path: "AGENTS.md", kind: "agents", scopePath: "." },
+      ]);
+    } finally {
+      await rm(fixture, { force: true, recursive: true });
+      await rm(outside, { force: true, recursive: true });
     }
   });
 });
