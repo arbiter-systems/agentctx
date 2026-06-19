@@ -12,6 +12,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added release documentation for pre-1.0 versioning and release steps.
 - Added a pull request checklist item for changelog updates.
 - Added `instv` as the primary short CLI command while keeping `instructov` as a compatibility alias.
+- Added repo-local `AGENTS.md` guidance for branch, PR, validation, cache, and safety expectations.
 
 ### Fixed
 
