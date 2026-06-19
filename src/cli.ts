@@ -25,7 +25,12 @@ import {
 import { extractAllSkillMetadata, type SkillMetadata } from "./skillMetadata.js";
 import { getChangedFiles, filterToInstructionSources, toPosixPath } from "./gitChanged.js";
 import { getInstructionDiffComparison, readGitFile } from "./gitDiff.js";
-import { optionalBlock, pluralize, previewItems } from "./formatting.js";
+import {
+  optionalBlock,
+  pluralize,
+  previewItems,
+  PRIMARY_COMMAND_NAME,
+} from "./formatting.js";
 import {
   buildContextBudgetReport,
   formatBudgetText,
@@ -43,8 +48,6 @@ import {
 } from "./config.js";
 import { findingVerdict, withVerdicts } from "./verdict.js";
 export type { SuggestResult } from "./suggest.js";
-
-const PRIMARY_COMMAND_NAME = "instv";
 
 export type DoctorDetails = {
   sections: InstructionSection[];

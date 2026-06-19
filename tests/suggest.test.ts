@@ -352,6 +352,11 @@ describe("formatSuggestText", () => {
     expect(lines.join("\n").length).toBeLessThan(500);
   });
 
+  it("uses instv as the primary command identity in the header", () => {
+    const lines = formatSuggestText(makeResult());
+    expect(lines[0]).toBe('instv suggest "audit issue 330"');
+  });
+
   it("includes primary category", () => {
     const lines = formatSuggestText(makeResult());
     expect(lines.some((l) => l.includes("audit"))).toBe(true);

@@ -1,3 +1,5 @@
+export const PRIMARY_COMMAND_NAME = "instv";
+
 export type Preview<T> = {
   visible: T[];
   omittedCount: number;
