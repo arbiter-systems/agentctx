@@ -56,3 +56,4 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 
 - Fixed linked package binary execution so local linked CLI installs can run correctly.
 - Fixed the dev CLI runner module-resolution path by replacing direct Node TypeScript execution with `tsx`.
+- Hardened discovery and cache behavior around missing, inaccessible, and removed instruction files.
