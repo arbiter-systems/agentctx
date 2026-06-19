@@ -8,6 +8,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 
 ### Added
 
+- Added practical Phase 2 workflow examples for baseline inspection, budget review, multi-skill task briefing, local diff comparison, and no-write verdicts.
 - Added deterministic `instv review --stdin` prompt review with human and JSON output.
 - Added profile-aware prompt checks for coding tasks, code review, planning, and general prompts.
 - Added local high-confidence checks for empty prompts, missing structured objective or validation guidance, duplicate constraints, destructive commands, and likely secrets without displaying matched secret values.
