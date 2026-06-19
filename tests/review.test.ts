@@ -106,6 +106,8 @@ describe("reviewPrompt", () => {
 });
 
 describe("review command", () => {
+  const stdinGuidance = "Prompt text must be supplied through stdin. Use: instv review --stdin";
+
   it("documents stdin, json, and profile options", () => {
     const program = new Command();
     addReviewCommand(program);
@@ -123,9 +125,18 @@ describe("review command", () => {
 
     await program.parseAsync(["node", "instv", "review"]);
 
-    expect(error).toHaveBeenCalledWith(
-      "Prompt text must be supplied through stdin. Use: instv review --stdin",
-    );
+    expect(error).toHaveBeenCalledWith(stdinGuidance);
+    expect(process.exitCode).toBe(2);
+  });
+
+  it("rejects positional prompt text with the same stdin guidance", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const program = new Command();
+    addReviewCommand(program);
+
+    await program.parseAsync(["node", "instv", "review", "implement issue 80"]);
+
+    expect(error).toHaveBeenCalledWith(stdinGuidance);
     expect(process.exitCode).toBe(2);
   });
 });
