@@ -5,12 +5,26 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { discoverInstructionSources } from "../src/discovery.js";
+import { discoverInstructionSources, isWithinRoot } from "../src/discovery.js";
 
 const fixturesRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../fixtures/discovery",
 );
+
+describe("isWithinRoot", () => {
+  const root = path.join(path.sep, "repo");
+
+  it("accepts the repository root and nested candidates", () => {
+    expect(isWithinRoot(root, root)).toBe(true);
+    expect(isWithinRoot(root, path.join(root, "nested", "SKILL.md"))).toBe(true);
+  });
+
+  it("rejects sibling-prefix and parent-directory escapes", () => {
+    expect(isWithinRoot(root, path.join(path.sep, "repo-other", "SKILL.md"))).toBe(false);
+    expect(isWithinRoot(root, path.join(path.sep, "outside", "SKILL.md"))).toBe(false);
+  });
+});
 
 describe("discoverInstructionSources", () => {
   it("detects root-level instruction files", async () => {
