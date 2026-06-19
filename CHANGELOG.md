@@ -17,6 +17,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 ### Fixed
 
 - Removed tracked legacy cache artifacts and ignored local cache directories.
+- Fixed `suggest` skill penalties so parsed section and command findings are included.
 
 ## [0.1.0] - 2026-06-17
 

@@ -7,6 +7,12 @@ import { loadinstructovConfig } from "./config.js";
 import { discoverInstructionSources } from "./discovery.js";
 import { detectFindings } from "./findings.js";
 import { pluralize, previewItems, sumTokens } from "./formatting.js";
+import {
+  extractCommands,
+  parseSections,
+  type CommandRecord,
+  type InstructionSection,
+} from "./parser.js";
 import type { SkillMetadata, SkillPenalty } from "./skillMetadata.js";
 import { extractAllSkillMetadata } from "./skillMetadata.js";
 import { estimateTokens } from "./tokenEstimate.js";
@@ -469,6 +475,25 @@ async function analyzeSourcesInMemory(
   );
 }
 
+function parseInstructionContext(
+  analyzed: AnalyzedInstructionSource[],
+  sourceContents: ReadonlyMap<string, string>,
+): { sections: InstructionSection[]; commands: CommandRecord[] } {
+  const sections: InstructionSection[] = [];
+  const commands: CommandRecord[] = [];
+
+  for (const source of analyzed) {
+    const text = sourceContents.get(source.path);
+    if (text === undefined) continue;
+
+    const sourceSections = parseSections(source.path, text);
+    sections.push(...sourceSections);
+    commands.push(...extractCommands(source.path, text, sourceSections));
+  }
+
+  return { sections, commands };
+}
+
 export async function buildSuggestResultForTask(
   cwd: string,
   task: string,
@@ -478,10 +503,11 @@ export async function buildSuggestResultForTask(
   const sources = await discoverInstructionSources(cwd, resolvedConfig.discovery);
   const sourceContents = await readSourceContents(cwd, sources);
   const analyzed = await analyzeSourcesInMemory(cwd, sources, sourceContents);
+  const parsed = parseInstructionContext(analyzed, sourceContents);
   const findings = detectFindings({
     sources: analyzed,
-    sections: [],
-    commands: [],
+    sections: parsed.sections,
+    commands: parsed.commands,
   }, {
     tokenThresholds: resolvedConfig.doctor.token_thresholds,
   });
