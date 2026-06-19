@@ -44,6 +44,8 @@ import {
 import { findingVerdict, withVerdicts } from "./verdict.js";
 export type { SuggestResult } from "./suggest.js";
 
+const PRIMARY_COMMAND_NAME = "instv";
+
 export type DoctorDetails = {
   sections: InstructionSection[];
   commands: CommandRecord[];
@@ -502,7 +504,11 @@ export function formatDoctorText(
   const { summary, changed } = report;
   const isChanged = changed?.enabled === true;
 
-  const lines: string[] = [isChanged ? "instructov doctor --changed" : "instructov doctor"];
+  const lines: string[] = [
+    isChanged
+      ? `${PRIMARY_COMMAND_NAME} doctor --changed`
+      : `${PRIMARY_COMMAND_NAME} doctor`,
+  ];
 
   if (isChanged && changed) {
     lines.push(
@@ -652,7 +658,7 @@ export function createProgram(): Command {
   const program = new Command();
 
   program
-    .name("instructov")
+    .name(PRIMARY_COMMAND_NAME)
     .description("Audit and streamline AI instruction files for coding agents.")
     .version("0.1.0");
 

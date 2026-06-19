@@ -2,6 +2,6 @@
 import { createProgram } from "./cli.js";
 import { addExampleCommand } from "./example.js";
 
-const program = createProgram().name("instv");
+const program = createProgram();
 addExampleCommand(program);
 await program.parseAsync();
