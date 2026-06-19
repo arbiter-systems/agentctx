@@ -24,6 +24,8 @@ Use `brief` to produce a compact task prompt/loadout without dumping every instr
 instv brief "review PR 31 for security and test gaps"
 ```
 
+See [workflow examples](docs/examples.md) for small-repo, bloated-guidance, multi-skill, and pre-merge instruction-impact scenarios.
+
 ## Prompt review
 
 Review prompt text locally before sending it to a coding agent. Supply prompt content through stdin rather than a positional shell argument:
