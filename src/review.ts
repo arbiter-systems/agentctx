@@ -42,6 +42,12 @@ export type ReviewPromptOptions = {
   profile?: ReviewProfile;
 };
 
+type ReviewCommandOptions = {
+  stdin?: boolean;
+  json?: boolean;
+  profile?: string;
+};
+
 const structuredProfiles = new Set<ReviewProfile>([
   "coding-task",
   "code-review",
@@ -270,11 +276,12 @@ export function addReviewCommand(program: Command): void {
   program
     .command("review")
     .description("Review prompt text from stdin using deterministic checks.")
+    .argument("[prompt...]", "Prompt text is not accepted as a positional argument")
     .option("--stdin", "Read prompt text from stdin")
     .option("--json", "Output JSON")
     .option("--profile <profile>", "Review profile: coding-task, code-review, planning, or general", "general")
-    .action(async (options: { stdin?: boolean; json?: boolean; profile?: string }) => {
-      if (options.stdin !== true) {
+    .action(async (promptArguments: string[], options: ReviewCommandOptions) => {
+      if (promptArguments.length > 0 || options.stdin !== true) {
         writeReviewInputError("Prompt text must be supplied through stdin. Use: instv review --stdin");
         return;
       }
