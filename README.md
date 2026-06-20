@@ -38,6 +38,10 @@ Use `--json` for integrations. Available profiles are `coding-task`, `code-revie
 
 Prompt review is deterministic and advisory. It reports high-confidence checks for empty prompts, missing objective or validation guidance where the selected profile requires them, duplicate constraints, potentially destructive commands, and likely secrets. Secret values are not included in findings. Prompt-size estimates are approximate.
 
+## VS Code Prompt Review
+
+The local VS Code extension provides **Instructov: Open Prompt Review** for a paste → profile → review → clear workflow. It works without an open workspace, has no network path, and keeps prompt and finding content in memory only for the active panel. See [`extensions/vscode/README.md`](extensions/vscode/README.md) for local Extension Development Host instructions.
+
 ## Context budget and branch impact
 
 Show approximate instruction-context pressure:
