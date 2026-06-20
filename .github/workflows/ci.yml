@@ -58,3 +58,10 @@ jobs:
 
       - name: Package extension
         run: npm run package --prefix extensions/vscode
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: instructov-vscode
+          path: extensions/vscode/package/instructov-vscode.vsix
+          if-no-files-found: error
