@@ -70,6 +70,7 @@ function globToRegex(pattern: string): RegExp {
   let expression = "^";
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern[index];
+    if (char === undefined) continue;
     const next = pattern[index + 1];
     if (char === "*" && next === "*") {
       const slash = pattern[index + 2] === "/";
