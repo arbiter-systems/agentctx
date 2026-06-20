@@ -1,10 +1,11 @@
 import * as vscode from "vscode";
 
+import { registerPromptReviewCommand } from "./commandRegistration.js";
 import { PromptReviewPanel } from "./promptReviewPanel.js";
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
-    vscode.commands.registerCommand("instructov.openPromptReview", () => PromptReviewPanel.open()),
+    registerPromptReviewCommand(vscode.commands, () => PromptReviewPanel.open()),
   );
 }
 
