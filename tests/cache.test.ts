@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -24,6 +24,40 @@ describe("cache", () => {
       const raw = await readFile(path.join(cwd, ".instructov", "cache.json"), "utf8");
       expect(JSON.parse(raw)).toEqual({ entries: { "AGENTS.md": entry } });
       expect(await readdir(path.join(cwd, ".instructov"))).toEqual(["cache.json"]);
+      await expect(loadCache(cwd)).resolves.toEqual(new Map([[entry.path, entry]]));
+    } finally {
+      await rm(cwd, { force: true, recursive: true });
+    }
+  });
+
+  it("ignores a malformed cache file instead of returning corrupted entries", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "instructov-cache-"));
+    try {
+      await mkdir(path.join(cwd, ".instructov"));
+      await writeFile(path.join(cwd, ".instructov", "cache.json"), "not json");
+
+      await expect(loadCache(cwd)).resolves.toEqual(new Map());
+    } finally {
+      await rm(cwd, { force: true, recursive: true });
+    }
+  });
+
+  it("drops individual entries with the wrong shape while keeping valid ones", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "instructov-cache-"));
+    try {
+      await mkdir(path.join(cwd, ".instructov"));
+      await writeFile(
+        path.join(cwd, ".instructov", "cache.json"),
+        JSON.stringify({
+          entries: {
+            "AGENTS.md": entry,
+            "CLAUDE.md": { path: "CLAUDE.md", mtimeMs: "not a number", size: 2, version: CACHE_VERSION, bytes: 2, estimatedTokens: 1 },
+            "GEMINI.md": null,
+            "SKILL.md": "a string, not an object",
+          },
+        }),
+      );
+
       await expect(loadCache(cwd)).resolves.toEqual(new Map([[entry.path, entry]]));
     } finally {
       await rm(cwd, { force: true, recursive: true });

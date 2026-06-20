@@ -89,7 +89,7 @@ export type Finding = {
 const MIN_GUIDANCE_LINE_LENGTH = 20;
 const SOURCE_WARNING_TOKENS = 1200;
 const SOURCE_HIGH_TOKENS = 2000;
-const HIGH_TOKEN_WASTE_SOURCE_TOKENS = 3000;
+const HIGH_TOKEN_WASTE_MULTIPLIER = 1.5;
 const SECTION_WARNING_TOKENS = 500;
 
 export type TokenThresholds = {
@@ -260,16 +260,17 @@ function sourceSizeFindings(
   tokenThresholds: TokenThresholds,
 ): Finding[] {
   const findings: Finding[] = [];
+  const highTokenWasteThreshold = tokenThresholds.source_high * HIGH_TOKEN_WASTE_MULTIPLIER;
 
   for (const source of sources) {
-    if (source.estimatedTokens >= HIGH_TOKEN_WASTE_SOURCE_TOKENS) {
+    if (source.estimatedTokens >= highTokenWasteThreshold) {
       findings.push({
         code: "high-token-waste-source",
         severity: "high",
         message: "Instruction source has high estimated token waste.",
         sourcePath: source.path,
         estimatedAvoidableTokens:
-          source.estimatedTokens - HIGH_TOKEN_WASTE_SOURCE_TOKENS,
+          source.estimatedTokens - highTokenWasteThreshold,
         hint: "Prioritize reducing or scoping this file before adding more guidance.",
       });
     } else if (source.estimatedTokens >= tokenThresholds.source_warning) {
@@ -350,7 +351,13 @@ const riskyLanguagePatterns: RiskyLanguagePattern[] = [
     hint: "Scope validation to changed files, packages, or projects.",
   },
   {
-    pattern: /\brecursive\b/i,
+    pattern: /\brecursive(?:ly)?\b.{0,40}\b(?:validat\w*|test\w*|format\w*|check\w*)\b/i,
+    severity: "high",
+    message: "Validation guidance asks for recursive work.",
+    hint: "Use explicit bounded paths instead of recursive validation.",
+  },
+  {
+    pattern: /\b(?:validat\w*|test\w*|format\w*|check\w*)\b.{0,40}\brecursive(?:ly)?\b/i,
     severity: "high",
     message: "Validation guidance asks for recursive work.",
     hint: "Use explicit bounded paths instead of recursive validation.",
@@ -435,7 +442,9 @@ function normalizeCommandLine(commandText: string): string {
 function isScopedPackageTest(command: string, packageManager: "npm" | "pnpm" | "yarn"): boolean {
   if (packageManager === "npm") return /^npm\s+test\s+--\s+\S+/i.test(command);
   if (packageManager === "pnpm") return /^pnpm\s+test\s+--filter\s+\S+/i.test(command);
-  return /^yarn\s+test\s+\S+/i.test(command);
+  const match = /^yarn\s+test\s+(.+)$/i.exec(command);
+  if (!match?.[1]) return false;
+  return match[1].split(/\s+/).some((token) => token.length > 0 && !token.startsWith("-"));
 }
 
 function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "lineStart" | "lineEnd"> | null {
@@ -460,8 +469,8 @@ function riskyCommandFindingFor(command: string): Omit<Finding, "sourcePath" | "
   }
 
   for (const packageManager of ["npm", "pnpm", "yarn"] as const) {
-    const exactTest = new RegExp(String.raw`^${packageManager}\s+test\s*$`, "i");
-    if (exactTest.test(command) && !isScopedPackageTest(command, packageManager)) {
+    const isTestCommand = new RegExp(String.raw`^${packageManager}\s+test\b`, "i");
+    if (isTestCommand.test(command) && !isScopedPackageTest(command, packageManager)) {
       return {
         code: "unbounded-command",
         severity: "medium",
@@ -662,9 +671,10 @@ function commandConflictSignalFor(command: string): Pick<ConflictSignal, "kind" 
   if (/^dotnet\s+test\b/i.test(command)) {
     const hasProjectPath = /^dotnet\s+test\s+\S+/i.test(command) &&
       !/^dotnet\s+test\s+--/i.test(command);
+    const hasFilter = /\s--filter(?:=|\s+\S+)/i.test(command);
     return {
       kind: "validation-scope",
-      value: hasProjectPath ? "bounded" : "full",
+      value: hasProjectPath || hasFilter ? "bounded" : "full",
       matchedText: command,
     };
   }

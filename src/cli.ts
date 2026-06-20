@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { realpathSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { discoverInstructionSources, type InstructionSource } from "./discovery.js";
+import { discoverInstructionSources, isWithinRoot, type InstructionSource } from "./discovery.js";
 import {
   analyzeInstructionSources,
   analyzeInstructionSourcesInMemory,
@@ -125,19 +125,28 @@ async function readSourceContents(
   cwd: string,
   sources: Array<{ path: string }>,
 ): Promise<Map<string, string>> {
+  let root: string;
+  try {
+    root = await realpath(cwd);
+  } catch {
+    return new Map();
+  }
+
   return new Map(
     (
       await Promise.all(
         sources.map(async (source) => {
           try {
             const absolutePath = path.join(cwd, source.path);
-            if (statSync(absolutePath).size > MAX_INSTRUCTION_SOURCE_BYTES) {
+            const resolvedPath = await realpath(absolutePath);
+            if (!isWithinRoot(root, resolvedPath)) return null;
+            if (statSync(resolvedPath).size > MAX_INSTRUCTION_SOURCE_BYTES) {
               return null;
             }
 
             return [
               source.path,
-              await readFile(absolutePath, "utf8"),
+              await readFile(resolvedPath, "utf8"),
             ] as const;
           } catch {
             return null;

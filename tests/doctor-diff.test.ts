@@ -198,6 +198,26 @@ describe("doctor --diff", () => {
     expect(report.diff?.tokenDelta).not.toBe(0);
   });
 
+  it("reports a renamed instruction file as changed under its new path", async () => {
+    await initialCommit(dir, {
+      "skills/review/SKILL.md": [
+        "---",
+        "name: review",
+        "summary: Review pull requests.",
+        "---",
+        "# Review",
+        "",
+      ].join("\n"),
+    });
+    await mkdir(join(dir, "skills", "audit"), { recursive: true });
+    await git(["mv", "skills/review/SKILL.md", "skills/audit/SKILL.md"], dir);
+    await commitAll(dir, "rename skill");
+
+    const report = await buildDoctorReport(dir, { diffRef: "dev~1...HEAD" });
+
+    expect(report.diff?.changedInstructionFiles).toEqual(["skills/audit/SKILL.md"]);
+  });
+
   it("rejects --changed with --diff", async () => {
     await initialCommit(dir, { "AGENTS.md": "# Agent\n\nInitial guidance.\n" });
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);

@@ -22,6 +22,13 @@ async function gitLines(args: string[], cwd: string): Promise<string[]> {
     .map(toPosixPath);
 }
 
+function isUnbornHeadError(err: unknown): boolean {
+  const stderr = typeof (err as { stderr?: unknown })?.stderr === "string"
+    ? (err as { stderr: string }).stderr
+    : "";
+  return /unknown revision|ambiguous argument|bad revision/i.test(stderr);
+}
+
 export async function getChangedFiles(cwd: string): Promise<string[]> {
   const results = new Set<string>();
   let headAvailable = true;
@@ -30,7 +37,8 @@ export async function getChangedFiles(cwd: string): Promise<string[]> {
     for (const filePath of await gitLines(["diff", "--name-only", "--diff-filter=ACMR", "HEAD"], cwd)) {
       results.add(filePath);
     }
-  } catch {
+  } catch (err) {
+    if (!isUnbornHeadError(err)) throw err;
     headAvailable = false;
   }
 

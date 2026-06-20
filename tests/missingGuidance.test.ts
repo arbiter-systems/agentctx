@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildDoctorReport, formatDoctorText } from "../src/cli.js";
 import {
+  detectMissingGuidance,
   MIN_TOTAL_ESTIMATED_TOKENS,
   MIN_TOTAL_SOURCES,
 } from "../src/missingGuidance.js";
@@ -195,6 +196,28 @@ describe("missing guidance findings", () => {
         expect(codes.has("missing-skill-trigger")).toBe(false);
       },
     );
+  });
+
+  it("skips the global guidance check when a mix of read failures and small sources keeps total tokens low", () => {
+    const findings = detectMissingGuidance({
+      sources: [
+        { path: "AGENTS.md", kind: "agents", scopePath: ".", bytes: 0, estimatedTokens: 0 },
+        { path: "CLAUDE.md", kind: "claude", scopePath: ".", bytes: 200, estimatedTokens: 50 },
+      ],
+      sections: [
+        {
+          sourcePath: "CLAUDE.md",
+          heading: "(root)",
+          text: "This guidance has no branch, PR, validation, or destructive command language.",
+          normalizedText: "this guidance has no branch pr validation or destructive command language",
+          lineStart: 1,
+          lineEnd: 1,
+          estimatedTokens: 50,
+        },
+      ],
+    });
+
+    expect(findings.filter((finding) => finding.code.startsWith("missing-"))).toEqual([]);
   });
 
   it("shows missing guidance under warnings in compact human output", async () => {
