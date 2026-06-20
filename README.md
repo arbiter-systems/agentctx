@@ -56,10 +56,6 @@ Compare instruction impact before merging:
 instv doctor --diff dev
 ```
 
-## Command aliases
-
-`instv` is the primary short CLI command. `instructov` remains available as a compatibility alias.
-
 ## Configuration
 
 Repos can add an optional `instructov.yml`:
@@ -103,12 +99,6 @@ display_limits:
   suggest_excluded: 3
 ```
 
-## Legacy migration
-
-The repo was previously named `agentctx`. New docs and examples should use `Instructov` and `instv`.
-
-Legacy `.agentctx/` cache paths are ignored. Legacy `agentctx.yml` is not loaded; rename it to `instructov.yml` to use the current configuration format.
-
 ## Constraints
 
 - Local only.
@@ -117,14 +107,3 @@ Legacy `.agentctx/` cache paths are ignored. Legacy `agentctx.yml` is not loaded
 - No LLM calls.
 - No automatic file rewrites.
 - Token estimates are approximate and should not be presented as model-exact counts.
-
-## Planned
-
-- Inventory instruction files.
-- Estimate instruction context cost.
-- Detect duplicate guidance.
-- Detect risky validation commands.
-- Suggest compact task prompts.
-- Generate task-specific briefings.
-- Report context budget pressure.
-- Compare instruction impact across refs.

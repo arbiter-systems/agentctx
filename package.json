@@ -5,8 +5,7 @@
   "main": "./dist/cli.js",
   "type": "module",
   "bin": {
-    "instv": "./dist/instv.js",
-    "instructov": "./dist/instv.js"
+    "instv": "./dist/instv.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
