@@ -7,6 +7,15 @@
   "bin": {
     "instv": "./dist/instv.js"
   },
+  "repository": "github:arbiter-systems/instructov",
+  "bugs": "https://github.com/arbiter-systems/instructov/issues",
+  "homepage": "https://github.com/arbiter-systems/instructov#readme",
+  "keywords": ["ai", "coding-agent", "developer-tools", "instructions", "prompt-engineering"],
+  "author": "Arbiter Systems",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/instv.ts",
@@ -16,14 +25,7 @@
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build"
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "keywords": [],
-  "author": "",
-  "license": "MIT",
+  "files": ["dist", "README.md", "LICENSE"],
   "dependencies": {
     "commander": "^15.0.0",
     "fast-glob": "^3.3.3",

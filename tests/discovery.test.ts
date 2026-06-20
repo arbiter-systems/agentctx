@@ -27,14 +27,23 @@ describe("isWithinRoot", () => {
 });
 
 describe("discoverInstructionSources", () => {
-  it("detects root-level instruction files", async () => {
-    await expect(
-      discoverInstructionSources(path.join(fixturesRoot, "root")),
-    ).resolves.toEqual([
-      { path: "AGENTS.md", kind: "agents", scopePath: "." },
-      { path: "CLAUDE.md", kind: "claude", scopePath: "." },
-      { path: "GEMINI.md", kind: "gemini", scopePath: "." },
-    ]);
+  it("detects root-level instruction files and repository configuration", async () => {
+    const fixture = await mkdtemp(path.join(tmpdir(), "instructov-discovery-root-"));
+    try {
+      await writeFile(path.join(fixture, "AGENTS.md"), "# Agents\n");
+      await writeFile(path.join(fixture, "CLAUDE.md"), "# Claude\n");
+      await writeFile(path.join(fixture, "GEMINI.md"), "# Gemini\n");
+      await writeFile(path.join(fixture, "instructov.yml"), "version: v0alpha1\n");
+
+      await expect(discoverInstructionSources(fixture)).resolves.toEqual([
+        { path: "AGENTS.md", kind: "agents", scopePath: "." },
+        { path: "CLAUDE.md", kind: "claude", scopePath: "." },
+        { path: "GEMINI.md", kind: "gemini", scopePath: "." },
+        { path: "instructov.yml", kind: "config", scopePath: "." },
+      ]);
+    } finally {
+      await rm(fixture, { force: true, recursive: true });
+    }
   });
 
   it("detects GitHub Copilot instructions", async () => {

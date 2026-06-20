@@ -18,6 +18,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added a pull request checklist item for changelog updates.
 - Added `instv` as the primary short CLI command.
 - Added repo-local `AGENTS.md` guidance for branch, PR, validation, cache, and safety expectations.
+- Added repository configuration files to default instruction-source discovery.
 
 ### Removed
 
@@ -29,6 +30,8 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Hardened local Git diff revision input and confined instruction discovery to the repository root.
 - Updated help and human CLI output to use `instv` as the primary identity.
 - Fixed `suggest` skill penalties so parsed section and command findings are included.
+- Fixed `doctor --diff` to include deleted conventional instruction sources in baseline comparison.
+- Made `.instructov` cache replacement atomic while retaining non-fatal cache failures.
 
 ## [0.1.0] - 2026-06-17
 

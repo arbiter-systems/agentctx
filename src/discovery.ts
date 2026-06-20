@@ -26,6 +26,7 @@ const defaultInclude = [
   "CLAUDE.md",
   "GEMINI.md",
   ".github/copilot-instructions.md",
+  "instructov.yml",
   "**/SKILL.md",
 ];
 
@@ -41,27 +42,106 @@ const ignoredDirectoryNames = [
   "obj",
 ];
 
-// **/dir/** matches root-level dir in fast-glob (** matches zero segments)
-const ignoredDirectories = ignoredDirectoryNames.map((d) => `**/${d}/**`);
+const ignoredDirectories = ignoredDirectoryNames.map((directory) => `**/${directory}/**`);
+const optionsBySources = new WeakMap<InstructionSource[], DiscoveryOptions>();
 
 function toPosixPath(value: string): string {
   return value.split(path.sep).join("/");
 }
 
-function scopePathFor(filePath: string): string {
-  if (filePath === ".github/copilot-instructions.md") return ".";
-  const directory = path.dirname(filePath);
-  return directory === "." ? "." : toPosixPath(directory);
+function effectiveOptions(opts: DiscoveryOptions): Required<DiscoveryOptions> {
+  return {
+    include: [...(opts.include ?? defaultInclude)],
+    exclude: [...ignoredDirectories, ...(opts.exclude ?? [])],
+  };
 }
 
-function kindForPath(filePath: string): InstructionSourceKind {
+function scopePathFor(filePath: string): string {
+  if (filePath === ".github/copilot-instructions.md" || filePath === "instructov.yml") return ".";
+  const directory = path.posix.dirname(filePath);
+  return directory === "." ? "." : directory;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+}
+
+function globToRegex(pattern: string): RegExp {
+  let expression = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    if (char === undefined) continue;
+    const next = pattern[index + 1];
+    if (char === "*" && next === "*") {
+      const slash = pattern[index + 2] === "/";
+      expression += slash ? "(?:.*/)?" : ".*";
+      index += slash ? 2 : 1;
+      continue;
+    }
+    if (char === "*") {
+      expression += "[^/]*";
+      continue;
+    }
+    if (char === "?") {
+      expression += "[^/]";
+      continue;
+    }
+    expression += escapeRegex(char);
+  }
+  return new RegExp(`${expression}$`);
+}
+
+function matchesPattern(filePath: string, pattern: string): boolean {
+  return globToRegex(pattern).test(filePath);
+}
+
+function matchesInclude(filePath: string, patterns: string[]): boolean {
+  let included = false;
+  for (const rawPattern of patterns) {
+    const excluded = rawPattern.startsWith("!");
+    const pattern = excluded ? rawPattern.slice(1) : rawPattern;
+    if (pattern.length === 0 || !matchesPattern(filePath, pattern)) continue;
+    included = !excluded;
+  }
+  return included;
+}
+
+export function isDiscoveredInstructionPath(
+  filePath: string,
+  opts: DiscoveryOptions = {},
+): boolean {
+  const normalizedPath = toPosixPath(filePath);
+  const options = effectiveOptions(opts);
+  return matchesInclude(normalizedPath, options.include) &&
+    !options.exclude.some((pattern) => matchesPattern(normalizedPath, pattern));
+}
+
+export function kindForInstructionPath(filePath: string): InstructionSourceKind | undefined {
   if (filePath === ".github/copilot-instructions.md") return "copilot";
   if (filePath === "instructov.yml") return "config";
   if (filePath.endsWith("/SKILL.md") || filePath === "SKILL.md") return "skill";
-  if (path.posix.basename(filePath) === "AGENTS.md") return "agents";
-  if (path.posix.basename(filePath) === "CLAUDE.md") return "claude";
-  if (path.posix.basename(filePath) === "GEMINI.md") return "gemini";
-  return "agents";
+  const basename = path.posix.basename(filePath);
+  if (basename === "AGENTS.md") return "agents";
+  if (basename === "CLAUDE.md") return "claude";
+  if (basename === "GEMINI.md") return "gemini";
+  return undefined;
+}
+
+export function instructionSourceForPath(
+  filePath: string,
+  opts: DiscoveryOptions = {},
+): InstructionSource | undefined {
+  const normalizedPath = toPosixPath(filePath);
+  if (!isDiscoveredInstructionPath(normalizedPath, opts)) return undefined;
+  return {
+    path: normalizedPath,
+    kind: kindForInstructionPath(normalizedPath) ?? "agents",
+    scopePath: scopePathFor(normalizedPath),
+  };
+}
+
+export function discoveryOptionsForSources(sources: InstructionSource[]): DiscoveryOptions {
+  return optionsBySources.get(sources) ?? {};
 }
 
 export function isWithinRoot(root: string, candidate: string): boolean {
@@ -93,16 +173,15 @@ export async function discoverInstructionSources(
     throw err;
   }
 
-  const include = opts.include ?? defaultInclude;
-  const exclude = [...ignoredDirectories, ...(opts.exclude ?? [])];
+  const options = effectiveOptions(opts);
   let files: string[];
   try {
-    files = await fg(include, {
+    files = await fg(options.include, {
       cwd: root,
       onlyFiles: true,
       dot: true,
       followSymbolicLinks: false,
-      ignore: exclude,
+      ignore: options.exclude,
       unique: true,
     });
   } catch (err: unknown) {
@@ -116,14 +195,14 @@ export async function discoverInstructionSources(
   const safeFiles = await Promise.all(
     files.map(async (file) => ({ file, safe: await isSafeSource(root, file) })),
   );
-  files = safeFiles
+  const sources = safeFiles
     .filter((entry) => entry.safe)
     .map((entry) => toPosixPath(entry.file))
-    .sort((a, b) => a.localeCompare(b, "en"));
-
-  return files.map((file) => ({
-    path: file,
-    kind: kindForPath(file),
-    scopePath: scopePathFor(file),
-  }));
+    .sort((left, right) => left.localeCompare(right, "en"))
+    .flatMap((file) => {
+      const source = instructionSourceForPath(file, options);
+      return source === undefined ? [] : [source];
+    });
+  optionsBySources.set(sources, options);
+  return sources;
 }

@@ -109,17 +109,15 @@ export async function getInstructionDiffComparison(
     const baselineRef = parsed.tripleDot
       ? (await gitOutput(["merge-base", parsed.baseRef, "HEAD"], cwd)).trim()
       : parsed.baseRef;
-    const changedFiles = lines(await gitOutput([
-      "diff",
-      "--name-only",
-      "--diff-filter=ACMR",
-      parsed.diffRef,
-    ], cwd));
+    const changedFiles = await gitOutput(
+      ["diff", "--name-only", "--diff-filter=ACMRD", parsed.diffRef],
+      cwd,
+    );
 
     return {
       comparedRef: parsed.comparedRef,
       baselineRef,
-      changedFiles,
+      changedFiles: lines(changedFiles),
     };
   } catch (err) {
     throw new GitDiffError(
