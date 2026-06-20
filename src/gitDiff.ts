@@ -1,15 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import { loadinstructovConfig, parseInstructovConfigText } from "./config.js";
-import {
-  discoverInstructionSources,
-  instructionSourceForPath,
-  type InstructionSource,
-} from "./discovery.js";
+import { parseInstructovConfigText } from "./config.js";
+import { isDiscoveredInstructionPath, type DiscoveryOptions } from "./discovery.js";
 
 const execFileAsync = promisify(execFile);
-const syntheticSourcePrefix = "__instructov_diff_source__:";
 
 export class GitDiffError extends Error {
   constructor(message: string) {
@@ -21,7 +16,13 @@ export class GitDiffError extends Error {
 export type GitDiffComparison = {
   comparedRef: string;
   baselineRef: string;
+  // Plain file paths reported by `git diff` (rename-aware: a move appears under
+  // its new path only).
   changedFiles: string[];
+  // Instruction-source paths whose discovery membership changed across config
+  // history (e.g. a removed include pattern or a deleted instructov.yml), which
+  // a plain file diff cannot express on its own.
+  changedInstructionSources: string[];
 };
 
 type ParsedDiffRef = {
@@ -110,75 +111,47 @@ function lines(stdout: string): string[] {
     .sort((left, right) => left.localeCompare(right, "en"));
 }
 
-function sourcePaths(sources: InstructionSource[]): Set<string> {
-  return new Set(sources.map((source) => toPosixPath(source.path)));
-}
-
-function encodeSyntheticInstructionSource(source: InstructionSource): string {
-  return `${syntheticSourcePrefix}${JSON.stringify(source)}`;
-}
-
-export function decodeSyntheticInstructionSource(value: string): InstructionSource | undefined {
-  if (!value.startsWith(syntheticSourcePrefix)) return undefined;
-
-  try {
-    const parsed: unknown = JSON.parse(value.slice(syntheticSourcePrefix.length));
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      typeof (parsed as { path?: unknown }).path !== "string" ||
-      typeof (parsed as { kind?: unknown }).kind !== "string" ||
-      typeof (parsed as { scopePath?: unknown }).scopePath !== "string"
-    ) {
-      return undefined;
-    }
-    return parsed as InstructionSource;
-  } catch {
-    return undefined;
-  }
-}
-
-async function baselineConfig(cwd: string, baselineRef: string) {
+async function readBaselineDiscovery(cwd: string, baselineRef: string): Promise<DiscoveryOptions> {
   const text = await readGitFile(cwd, baselineRef, "instructov.yml");
-  return text === undefined
+  const config = text === undefined
     ? parseInstructovConfigText("version: v0alpha1\n")
     : parseInstructovConfigText(text);
+  return config.discovery;
 }
 
-async function baselineSources(cwd: string, baselineRef: string): Promise<InstructionSource[]> {
-  const config = await baselineConfig(cwd, baselineRef);
-  const files = await listGitFiles(cwd, baselineRef);
-  return files.flatMap((filePath) => {
-    const source = instructionSourceForPath(filePath, config.discovery);
-    return source === undefined ? [] : [source];
-  });
-}
-
-async function sourceMembershipChanges(
+// Instruction sources whose membership changed because of a *configuration*
+// change across history, holding each side's own file tree constant. Pure file
+// add/delete/rename are intentionally excluded here: they are already reported
+// by `git diff`, and excluding them keeps renames counted once under their new
+// path. A source is membership-changed when the same path qualifies under one
+// side's discovery config but not the other's.
+async function membershipChangedSources(
   cwd: string,
   baselineRef: string,
+  currentDiscovery: DiscoveryOptions,
+  currentSourcePaths: readonly string[],
 ): Promise<string[]> {
-  const [currentConfig, baseline] = await Promise.all([
-    loadinstructovConfig(cwd),
-    baselineSources(cwd, baselineRef),
-  ]);
-  const current = await discoverInstructionSources(cwd, currentConfig.discovery);
-  const currentPaths = sourcePaths(current);
-  const baselinePaths = sourcePaths(baseline);
-  const changes: string[] = [];
+  const baselineDiscovery = await readBaselineDiscovery(cwd, baselineRef);
+  const baselineFiles = await listGitFiles(cwd, baselineRef);
 
-  for (const source of [...baseline, ...current]) {
-    const sourcePath = toPosixPath(source.path);
-    if (currentPaths.has(sourcePath) === baselinePaths.has(sourcePath)) continue;
-    changes.push(encodeSyntheticInstructionSource(source));
-  }
+  const removedByConfig = baselineFiles
+    .map(toPosixPath)
+    .filter((filePath) => isDiscoveredInstructionPath(filePath, baselineDiscovery))
+    .filter((filePath) => !isDiscoveredInstructionPath(filePath, currentDiscovery));
 
-  return [...new Set(changes)].sort((left, right) => left.localeCompare(right, "en"));
+  const addedByConfig = currentSourcePaths
+    .map(toPosixPath)
+    .filter((filePath) => !isDiscoveredInstructionPath(filePath, baselineDiscovery));
+
+  return [...new Set([...removedByConfig, ...addedByConfig])]
+    .sort((left, right) => left.localeCompare(right, "en"));
 }
 
 export async function getInstructionDiffComparison(
   cwd: string,
   ref: string,
+  currentDiscovery: DiscoveryOptions,
+  currentSourcePaths: readonly string[],
 ): Promise<GitDiffComparison> {
   const parsed = parseDiffRef(ref);
 
@@ -190,13 +163,18 @@ export async function getInstructionDiffComparison(
       ["diff", "--name-only", "--diff-filter=ACMRD", parsed.diffRef],
       cwd,
     );
-    const membershipChanges = await sourceMembershipChanges(cwd, baselineRef);
+    const changedInstructionSources = await membershipChangedSources(
+      cwd,
+      baselineRef,
+      currentDiscovery,
+      currentSourcePaths,
+    );
 
     return {
       comparedRef: parsed.comparedRef,
       baselineRef,
-      changedFiles: [...new Set([...lines(changedFiles), ...membershipChanges])]
-        .sort((left, right) => left.localeCompare(right, "en")),
+      changedFiles: lines(changedFiles),
+      changedInstructionSources,
     };
   } catch (err) {
     throw new GitDiffError(

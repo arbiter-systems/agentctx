@@ -132,17 +132,22 @@ export function kindForInstructionPath(filePath: string): InstructionSourceKind 
   return undefined;
 }
 
+export function instructionSourceFromPath(filePath: string): InstructionSource {
+  const normalizedPath = toPosixPath(filePath);
+  return {
+    path: normalizedPath,
+    kind: kindForInstructionPath(normalizedPath) ?? "agents",
+    scopePath: scopePathFor(normalizedPath),
+  };
+}
+
 export function instructionSourceForPath(
   filePath: string,
   opts: DiscoveryOptions = {},
 ): InstructionSource | undefined {
   const normalizedPath = toPosixPath(filePath);
   if (!isDiscoveredInstructionPath(normalizedPath, opts)) return undefined;
-  return {
-    path: normalizedPath,
-    kind: kindForInstructionPath(normalizedPath) ?? "agents",
-    scopePath: scopePathFor(normalizedPath),
-  };
+  return instructionSourceFromPath(normalizedPath);
 }
 
 export function discoveryOptionsForSources(sources: InstructionSource[]): DiscoveryOptions {

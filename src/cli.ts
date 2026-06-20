@@ -5,7 +5,12 @@ import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { discoverInstructionSources, isWithinRoot, type InstructionSource } from "./discovery.js";
+import {
+  discoverInstructionSources,
+  instructionSourceFromPath,
+  isWithinRoot,
+  type InstructionSource,
+} from "./discovery.js";
 import {
   analyzeInstructionSources,
   analyzeInstructionSourcesInMemory,
@@ -339,13 +344,30 @@ async function buildDoctorDiffReport(
   config: instructovConfig,
   opts: SnapshotOptions = {},
 ): Promise<DoctorDiffReport> {
-  const comparison = await getInstructionDiffComparison(cwd, comparedRef);
-  const changedInstructionFiles = filterToInstructionSources(
-    comparison.changedFiles,
-    sources,
+  const comparison = await getInstructionDiffComparison(
+    cwd,
+    comparedRef,
+    config.discovery,
+    sources.map((source) => toPosixPath(source.path)),
   );
-  const changedSet = new Set(changedInstructionFiles);
-  const diffSources = sources.filter((source) => changedSet.has(toPosixPath(source.path)));
+  // Instruction sources changed by the plain file diff (resolved under the
+  // current discovery config) unioned with sources whose config membership
+  // changed across history (already known to be sources, even when the current
+  // config no longer matches them).
+  const changedSet = new Set([
+    ...filterToInstructionSources(comparison.changedFiles, sources),
+    ...comparison.changedInstructionSources.map(toPosixPath),
+  ]);
+  const changedInstructionFiles = [...changedSet].sort((left, right) =>
+    left.localeCompare(right, "en"),
+  );
+  const sourceByPath = new Map(sources.map((source) => [toPosixPath(source.path), source]));
+  // Reconstruct a source descriptor for changed paths that are not current
+  // sources (e.g. a baseline-only source removed by a config change); these are
+  // known instruction-source paths, so derive the descriptor from the path.
+  const diffSources = changedInstructionFiles.map(
+    (filePath) => sourceByPath.get(filePath) ?? instructionSourceFromPath(filePath),
+  );
   const isEmpty = diffSources.length === 0;
   const currentDiffSnapshot = isEmpty
     ? emptySnapshot()

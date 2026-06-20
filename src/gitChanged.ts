@@ -6,7 +6,6 @@ import {
   type DiscoveryOptions,
   type InstructionSource,
 } from "./discovery.js";
-import { decodeSyntheticInstructionSource } from "./gitDiff.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -66,26 +65,13 @@ export function filterToInstructionSources(
   sources: InstructionSource[],
   opts: DiscoveryOptions = {},
 ): string[] {
-  const changedPaths = new Set<string>();
+  const changedPaths = changedFiles.map(toPosixPath);
   const knownPaths = new Set(sources.map((source) => toPosixPath(source.path)));
   const options = opts.include === undefined && opts.exclude === undefined
     ? discoveryOptionsForSources(sources)
     : opts;
 
-  for (const changedFile of changedFiles) {
-    const syntheticSource = decodeSyntheticInstructionSource(changedFile);
-    if (syntheticSource !== undefined) {
-      const sourcePath = toPosixPath(syntheticSource.path);
-      if (!knownPaths.has(sourcePath)) {
-        sources.push({ ...syntheticSource, path: sourcePath });
-        knownPaths.add(sourcePath);
-      }
-      changedPaths.add(sourcePath);
-      continue;
-    }
-
-    const filePath = toPosixPath(changedFile);
-    changedPaths.add(filePath);
+  for (const filePath of changedPaths) {
     if (knownPaths.has(filePath)) continue;
     const source = instructionSourceForPath(filePath, options);
     if (source === undefined) continue;
@@ -93,7 +79,8 @@ export function filterToInstructionSources(
     knownPaths.add(filePath);
   }
 
+  const changedSet = new Set(changedPaths);
   return [...knownPaths]
-    .filter((filePath) => changedPaths.has(filePath))
+    .filter((filePath) => changedSet.has(filePath))
     .sort((left, right) => left.localeCompare(right, "en"));
 }
