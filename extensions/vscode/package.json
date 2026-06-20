@@ -1,0 +1,28 @@
+{
+  "name": "instructov-vscode",
+  "displayName": "Instructov",
+  "publisher": "arbiter-systems",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "engines": { "vscode": "^1.96.0" },
+  "activationEvents": ["onCommand:instructov.openPromptReview"],
+  "contributes": {
+    "commands": [{ "command": "instructov.openPromptReview", "title": "Instructov: Open Prompt Review" }]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test tests/extension.test.ts",
+    "build": "node esbuild.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "@types/vscode": "1.96.0",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
