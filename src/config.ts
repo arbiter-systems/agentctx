@@ -373,6 +373,10 @@ function mergeConfig(partial: PartialConfig): instructovConfig {
   return merged;
 }
 
+export function parseInstructovConfigText(text: string): instructovConfig {
+  return mergeConfig(validateConfig(parseConfigYaml(text)));
+}
+
 export async function loadinstructovConfig(cwd: string): Promise<instructovConfig> {
   let text: string;
   try {
@@ -383,5 +387,5 @@ export async function loadinstructovConfig(cwd: string): Promise<instructovConfi
     throw err;
   }
 
-  return mergeConfig(validateConfig(parseConfigYaml(text)));
+  return parseInstructovConfigText(text);
 }
