@@ -1,9 +1,11 @@
 src/
 tests/
 scripts/
+esbuild.mjs
+tsconfig.json
 .gitignore
 .vscodeignore
 package/
 node_modules/
-*.ts
-*.map
+**/*.ts
+**/*.map

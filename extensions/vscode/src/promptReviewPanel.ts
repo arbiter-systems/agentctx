@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { REVIEW_PROFILES, type ReviewProfile } from "./generated/promptReviewCore.js";
+import { REVIEW_PROFILES, type ReviewProfile } from "../../../src/promptReviewCore.js";
 import { PromptReviewController } from "./promptReviewController.js";
 
 export class PromptReviewPanel {

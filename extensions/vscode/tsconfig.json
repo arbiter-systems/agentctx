@@ -1,8 +1,7 @@
 {
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist",
     "module": "nodenext",
+    "moduleResolution": "nodenext",
     "target": "es2022",
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -10,8 +9,9 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node", "vscode"],
+    "noEmit": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist", "tests"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

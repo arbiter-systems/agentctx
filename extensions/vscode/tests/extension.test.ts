@@ -4,19 +4,29 @@ import test from "node:test";
 import {
   OPEN_PROMPT_REVIEW_COMMAND,
   registerPromptReviewCommand,
-} from "../dist/commandRegistration.js";
-import { PromptReviewController } from "../dist/promptReviewController.js";
-import { reviewPromptLocally } from "../dist/reviewAdapter.js";
+} from "../src/commandRegistration.js";
+import { PromptReviewController } from "../src/promptReviewController.js";
+import { reviewPromptLocally } from "../src/reviewAdapter.js";
 
 test("registers the Prompt Review command", () => {
-  let command;
-  let callback;
+  let command: string | undefined;
+  let callback: (() => void) | undefined;
   const disposable = { dispose() {} };
-  const open = () => { open.called = true; };
-  registerPromptReviewCommand({ registerCommand(name, handler) { command = name; callback = handler; return disposable; } }, open);
+  let opened = false;
+  const open = () => { opened = true; };
+  registerPromptReviewCommand(
+    {
+      registerCommand(name, handler) {
+        command = name;
+        callback = handler;
+        return disposable;
+      },
+    },
+    open,
+  );
   assert.equal(command, OPEN_PROMPT_REVIEW_COMMAND);
-  callback();
-  assert.equal(open.called, true);
+  callback?.();
+  assert.equal(opened, true);
 });
 
 test("uses the shared review adapter and clears transient content", () => {

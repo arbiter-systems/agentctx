@@ -9,9 +9,13 @@ const output = path.join(outputDirectory, "instructov-vscode.vsix");
 await rm(outputDirectory, { force: true, recursive: true });
 await mkdir(outputDirectory, { recursive: true });
 
-const executable = process.platform === "win32" ? "npx.cmd" : "npx";
+// Use the locally installed vsce binary so packaging is deterministic and does
+// not depend on a network fetch. The build is bundled, so dependencies are
+// excluded from the VSIX.
+const binary = process.platform === "win32" ? "vsce.cmd" : "vsce";
+const executable = path.join(root, "node_modules", ".bin", binary);
 const result = await new Promise((resolve, reject) => {
-  const child = spawn(executable, ["--yes", "@vscode/vsce", "package", "--no-dependencies", "--out", output], {
+  const child = spawn(executable, ["package", "--no-dependencies", "--out", output], {
     cwd: root,
     stdio: "inherit",
   });

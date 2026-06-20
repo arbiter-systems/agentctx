@@ -1,4 +1,4 @@
-import type { PromptReviewReport, ReviewProfile } from "./generated/promptReviewCore.js";
+import type { PromptReviewReport, ReviewProfile } from "../../../src/promptReviewCore.js";
 import { reviewPromptLocally } from "./reviewAdapter.js";
 
 export class PromptReviewController {
