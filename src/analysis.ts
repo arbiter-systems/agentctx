@@ -26,6 +26,9 @@ export function summarize(sources: AnalyzedInstructionSource[]): DoctorSummary {
   };
 }
 
+// Oversized files are never read into memory, so this approximates from byte
+// size alone; it will diverge slightly from estimateTokens for multi-byte
+// content, where UTF-8 byte length and UTF-16 string length differ.
 function estimateTokensFromBytes(bytes: number): number {
   return Math.ceil(bytes / 4);
 }

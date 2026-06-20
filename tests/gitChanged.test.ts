@@ -1,11 +1,19 @@
+import { execFile as nodeExecFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
 import { discoverInstructionSources, type InstructionSource } from "../src/discovery.js";
-import { filterToInstructionSources } from "../src/gitChanged.js";
+import { filterToInstructionSources, getChangedFiles } from "../src/gitChanged.js";
+
+const execFileAsync = promisify(nodeExecFile);
+
+async function git(args: string[], cwd: string): Promise<void> {
+  await execFileAsync("git", args, { cwd });
+}
 
 describe("filterToInstructionSources", () => {
   it("retains a deleted conventional source for baseline diff analysis", () => {
@@ -72,5 +80,32 @@ describe("filterToInstructionSources", () => {
 
     expect(filterToInstructionSources(["notes.txt"], sources)).toEqual([]);
     expect(sources).toEqual([]);
+  });
+});
+
+describe("getChangedFiles", () => {
+  it("falls back to ls-files when HEAD has no commits yet (unborn branch)", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "instructov-unborn-"));
+    try {
+      await git(["init"], cwd);
+      await git(["config", "user.email", "test@instructov.test"], cwd);
+      await git(["config", "user.name", "Test"], cwd);
+      await writeFile(path.join(cwd, "AGENTS.md"), "# Agent\n");
+
+      const changed = await getChangedFiles(cwd);
+
+      expect(changed).toContain("AGENTS.md");
+    } finally {
+      await rm(cwd, { force: true, recursive: true });
+    }
+  });
+
+  it("propagates an unexpected git failure instead of silently returning an empty list", async () => {
+    const notARepo = await mkdtemp(path.join(tmpdir(), "instructov-norepo-"));
+    try {
+      await expect(getChangedFiles(notARepo)).rejects.toThrow();
+    } finally {
+      await rm(notARepo, { force: true, recursive: true });
+    }
   });
 });

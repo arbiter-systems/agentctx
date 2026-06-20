@@ -58,7 +58,7 @@ instv doctor --diff dev
 
 ## Configuration
 
-Repos can add an optional `instructov.yml`:
+Repos can add an optional `instructov.yml`. It is itself discovered as an instruction source (kind `config`), so `doctor` can flag it for staleness or bloat like any other guidance file:
 
 ```yaml
 version: v0alpha1
@@ -69,6 +69,7 @@ discovery:
     - CLAUDE.md
     - GEMINI.md
     - .github/copilot-instructions.md
+    - instructov.yml
     - "**/SKILL.md"
   exclude:
     - node_modules/**

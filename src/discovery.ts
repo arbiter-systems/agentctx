@@ -21,7 +21,7 @@ export type DiscoveryOptions = {
   exclude?: string[];
 };
 
-const defaultInclude = [
+export const defaultInclude = [
   "AGENTS.md",
   "CLAUDE.md",
   "GEMINI.md",
@@ -66,6 +66,11 @@ function escapeRegex(value: string): string {
   return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
 }
 
+// Supports *, **, and ? only (no brace expansion or character classes), unlike
+// the fast-glob walk in discoverInstructionSources. This is intentional: this
+// matcher classifies arbitrary candidate paths (e.g. git-reported deletions)
+// without touching the filesystem, where fast-glob's full syntax isn't needed
+// for the documented include/exclude patterns this tool supports.
 function globToRegex(pattern: string): RegExp {
   let expression = "^";
   for (let index = 0; index < pattern.length; index += 1) {

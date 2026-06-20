@@ -5,8 +5,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildDoctorReport, formatDoctorText } from "../src/cli.js";
-import { extractConflictSignals } from "../src/findings.js";
+import { detectFindings, extractConflictSignals } from "../src/findings.js";
 import { extractCommands, parseSections } from "../src/parser.js";
+
+function findingsForText(text: string) {
+  const sections = parseSections("AGENTS.md", text);
+  const commands = extractCommands("AGENTS.md", text, sections);
+  return detectFindings({ sources: [], sections, commands });
+}
 
 const fixturesRoot = path.resolve("fixtures/findings");
 const duplicatedGuidance =
@@ -413,5 +419,97 @@ describe("doctor findings", () => {
     expect(output).not.toContain("Always branch from dev.");
     expect(output).not.toContain("Always branch from main.");
     expect(output.split("\n").length).toBeLessThanOrEqual(30);
+  });
+
+  it("does not treat a bare flag as a scoped yarn test target", () => {
+    const text = ["# Workflow", "", "Run:", "", "```", "yarn test --coverage", "```", ""].join(
+      "\n",
+    );
+
+    const findings = findingsForText(text);
+
+    expect(
+      findings.some(
+        (finding) => finding.code === "unbounded-command" && finding.matchedText === "yarn test --coverage",
+      ),
+    ).toBe(true);
+  });
+
+  it("treats a real path after yarn test as scoped", () => {
+    const text = [
+      "# Workflow",
+      "",
+      "Run:",
+      "",
+      "```",
+      "yarn test path/to/test --coverage",
+      "```",
+      "",
+    ].join("\n");
+
+    const findings = findingsForText(text);
+
+    expect(findings.some((finding) => finding.code === "unbounded-command")).toBe(false);
+  });
+
+  it("treats dotnet test --filter as a bounded validation signal", () => {
+    const text = [
+      "# Workflow",
+      "",
+      "Always run `dotnet test --filter Category=Unit`.",
+      "Always run `dotnet test` against the entire repo.",
+      "",
+    ].join("\n");
+    const sections = parseSections("AGENTS.md", text);
+    const commands = extractCommands("AGENTS.md", text, sections);
+    const signals = extractConflictSignals({ sections, commands });
+
+    expect(signals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "validation-scope",
+          value: "bounded",
+          matchedText: "dotnet test --filter Category=Unit",
+        }),
+      ]),
+    );
+  });
+
+  it("only flags recursive language in validation or format context", () => {
+    const flagged = findingsForText(
+      ["# Workflow", "", "Run validation recursively across all packages.", ""].join("\n"),
+    );
+    const unflagged = findingsForText(
+      ["# Workflow", "", "This API call is recursive by design.", ""].join("\n"),
+    );
+
+    expect(
+      flagged.some((finding) => finding.code === "risky-validation-command"),
+    ).toBe(true);
+    expect(
+      unflagged.some((finding) => finding.code === "risky-validation-command"),
+    ).toBe(false);
+  });
+
+  it("derives the high-token-waste threshold from the configured source_high threshold", () => {
+    const longSource = {
+      path: "AGENTS.md",
+      kind: "agents" as const,
+      scopePath: ".",
+      bytes: 0,
+      estimatedTokens: 45,
+    };
+
+    const findings = detectFindings(
+      { sources: [longSource], sections: [], commands: [] },
+      { tokenThresholds: { source_warning: 10, source_high: 20, section_warning: 10 } },
+    );
+
+    expect(
+      findings.some((finding) => finding.code === "high-token-waste-source"),
+    ).toBe(true);
+    expect(
+      findings.some((finding) => finding.code === "oversized-source"),
+    ).toBe(false);
   });
 });

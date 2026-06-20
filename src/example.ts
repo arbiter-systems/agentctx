@@ -17,8 +17,6 @@ export const EXAMPLE_TEXT = [
   "  instv brief \"implement issue 74\"",
   "  instv brief --budget 1200 \"review PR 72 for security and test gaps\"",
   "  instv brief --json \"audit issue 62\"",
-  "",
-  "`instructov` remains available as a compatibility command.",
 ] as const;
 
 export function addExampleCommand(program: Command): void {

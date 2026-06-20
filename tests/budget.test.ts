@@ -279,4 +279,26 @@ describe("brief budget CLI", () => {
       );
     });
   });
+
+  it.each(["0", "-5", "1.5", "abc", "01"])(
+    "sets exit code 2 for invalid brief budget value %s",
+    async (value) => {
+      await withInstructionFixture(async (fixtureRoot) => {
+        const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        vi.spyOn(process, "cwd").mockReturnValue(fixtureRoot);
+
+        await createProgram().parseAsync([
+          "node",
+          "instructov",
+          "brief",
+          "review PR 31",
+          "--budget",
+          value,
+        ]);
+
+        expect(process.exitCode).toBe(2);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("positive integer"));
+      });
+    },
+  );
 });

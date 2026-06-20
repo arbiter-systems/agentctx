@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
+import { defaultInclude } from "./discovery.js";
 import { VALID_FINDING_CODES } from "./findings.js";
 
 const CONFIG_FILE_NAME = "instructov.yml";
@@ -88,13 +89,7 @@ export class ConfigError extends Error {
 export const DEFAULT_instructov_CONFIG: instructovConfig = {
   version: "v0alpha1",
   discovery: {
-    include: [
-      "AGENTS.md",
-      "CLAUDE.md",
-      "GEMINI.md",
-      ".github/copilot-instructions.md",
-      "**/SKILL.md",
-    ],
+    include: [...defaultInclude],
     exclude: [
       "node_modules/**",
       "vendor/**",
@@ -193,7 +188,13 @@ function parseScalar(value: string, lineNumber: number): string | number | boole
   const trimmed = value.trim();
   if (trimmed === "true") return true;
   if (trimmed === "false") return false;
-  if (/^-?\d+$/.test(trimmed)) return Number(trimmed);
+  if (/^-?(?:0|[1-9]\d*)$/.test(trimmed)) {
+    const parsed = Number(trimmed);
+    if (!Number.isSafeInteger(parsed)) {
+      throw new ConfigError(`Invalid ${CONFIG_FILE_NAME}: integer out of range at line ${lineNumber}.`);
+    }
+    return parsed;
+  }
   if (
     (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))

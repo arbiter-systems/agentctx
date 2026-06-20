@@ -19,12 +19,36 @@ type CacheFile = {
   entries: Record<string, CacheEntry>;
 };
 
+function isValidCacheEntry(value: unknown): value is CacheEntry {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.path === "string" &&
+    typeof entry.mtimeMs === "number" &&
+    Number.isFinite(entry.mtimeMs) &&
+    typeof entry.size === "number" &&
+    Number.isFinite(entry.size) &&
+    typeof entry.version === "string" &&
+    typeof entry.bytes === "number" &&
+    Number.isFinite(entry.bytes) &&
+    typeof entry.estimatedTokens === "number" &&
+    Number.isFinite(entry.estimatedTokens)
+  );
+}
+
 export async function loadCache(cwd: string): Promise<Map<string, CacheEntry>> {
   try {
     const raw = await readFile(path.join(cwd, CACHE_FILE), "utf8");
     const parsed = JSON.parse(raw) as CacheFile;
-    if (!parsed || typeof parsed !== "object" || !parsed.entries) return new Map();
-    return new Map(Object.entries(parsed.entries));
+    if (!parsed || typeof parsed !== "object" || !parsed.entries || typeof parsed.entries !== "object") {
+      return new Map();
+    }
+
+    const entries = new Map<string, CacheEntry>();
+    for (const [cachedPath, entry] of Object.entries(parsed.entries)) {
+      if (isValidCacheEntry(entry)) entries.set(cachedPath, entry);
+    }
+    return entries;
   } catch {
     return new Map();
   }
