@@ -26,6 +26,7 @@ const defaultInclude = [
   "CLAUDE.md",
   "GEMINI.md",
   ".github/copilot-instructions.md",
+  "instructov.yml",
   "**/SKILL.md",
 ];
 
@@ -41,27 +42,34 @@ const ignoredDirectoryNames = [
   "obj",
 ];
 
-// **/dir/** matches root-level dir in fast-glob (** matches zero segments)
-const ignoredDirectories = ignoredDirectoryNames.map((d) => `**/${d}/**`);
+const ignoredDirectories = ignoredDirectoryNames.map((directory) => `**/${directory}/**`);
 
 function toPosixPath(value: string): string {
   return value.split(path.sep).join("/");
 }
 
 function scopePathFor(filePath: string): string {
-  if (filePath === ".github/copilot-instructions.md") return ".";
+  if (filePath === ".github/copilot-instructions.md" || filePath === "instructov.yml") return ".";
   const directory = path.dirname(filePath);
   return directory === "." ? "." : toPosixPath(directory);
 }
 
-function kindForPath(filePath: string): InstructionSourceKind {
+export function kindForInstructionPath(filePath: string): InstructionSourceKind | undefined {
   if (filePath === ".github/copilot-instructions.md") return "copilot";
   if (filePath === "instructov.yml") return "config";
   if (filePath.endsWith("/SKILL.md") || filePath === "SKILL.md") return "skill";
-  if (path.posix.basename(filePath) === "AGENTS.md") return "agents";
-  if (path.posix.basename(filePath) === "CLAUDE.md") return "claude";
-  if (path.posix.basename(filePath) === "GEMINI.md") return "gemini";
-  return "agents";
+  if (filePath === "AGENTS.md") return "agents";
+  if (filePath === "CLAUDE.md") return "claude";
+  if (filePath === "GEMINI.md") return "gemini";
+  return undefined;
+}
+
+export function instructionSourceForPath(filePath: string): InstructionSource | undefined {
+  const normalizedPath = toPosixPath(filePath);
+  const kind = kindForInstructionPath(normalizedPath);
+  return kind === undefined
+    ? undefined
+    : { path: normalizedPath, kind, scopePath: scopePathFor(normalizedPath) };
 }
 
 export function isWithinRoot(root: string, candidate: string): boolean {
@@ -116,14 +124,13 @@ export async function discoverInstructionSources(
   const safeFiles = await Promise.all(
     files.map(async (file) => ({ file, safe: await isSafeSource(root, file) })),
   );
-  files = safeFiles
+  return safeFiles
     .filter((entry) => entry.safe)
     .map((entry) => toPosixPath(entry.file))
-    .sort((a, b) => a.localeCompare(b, "en"));
-
-  return files.map((file) => ({
-    path: file,
-    kind: kindForPath(file),
-    scopePath: scopePathFor(file),
-  }));
+    .sort((left, right) => left.localeCompare(right, "en"))
+    .map((file) => instructionSourceForPath(file) ?? {
+      path: file,
+      kind: "agents" as const,
+      scopePath: scopePathFor(file),
+    });
 }
