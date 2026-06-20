@@ -126,6 +126,16 @@ export async function getInstructionDiffComparison(
   }
 }
 
+export async function listGitFiles(cwd: string, ref: string): Promise<string[]> {
+  try {
+    return lines(await gitOutput(["ls-tree", "-r", "--name-only", ref], cwd));
+  } catch (err) {
+    throw new GitDiffError(
+      `Unable to list files at "${ref}": ${errorText(err)}`,
+    );
+  }
+}
+
 export async function readGitFile(
   cwd: string,
   ref: string,
