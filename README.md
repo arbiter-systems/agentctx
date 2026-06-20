@@ -103,12 +103,6 @@ display_limits:
   suggest_excluded: 3
 ```
 
-## Legacy migration
-
-The repo was previously named `agentctx`. New docs and examples should use `Instructov` and `instv`.
-
-Legacy `.agentctx/` cache paths are ignored. Legacy `agentctx.yml` is not loaded; rename it to `instructov.yml` to use the current configuration format.
-
 ## Constraints
 
 - Local only.
