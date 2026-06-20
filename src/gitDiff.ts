@@ -1,8 +1,15 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { toPosixPath } from "./gitChanged.js";
+
+import { loadinstructovConfig, parseInstructovConfigText } from "./config.js";
+import {
+  discoverInstructionSources,
+  instructionSourceForPath,
+  type InstructionSource,
+} from "./discovery.js";
 
 const execFileAsync = promisify(execFile);
+const syntheticSourcePrefix = "__instructov_diff_source__:";
 
 export class GitDiffError extends Error {
   constructor(message: string) {
@@ -23,6 +30,10 @@ type ParsedDiffRef = {
   diffRef: string;
   tripleDot: boolean;
 };
+
+function toPosixPath(value: string): string {
+  return value.split("\\").join("/");
+}
 
 function errorText(err: unknown): string {
   const maybeExecError = err as { stderr?: unknown; message?: unknown };
@@ -99,6 +110,72 @@ function lines(stdout: string): string[] {
     .sort((left, right) => left.localeCompare(right, "en"));
 }
 
+function sourcePaths(sources: InstructionSource[]): Set<string> {
+  return new Set(sources.map((source) => toPosixPath(source.path)));
+}
+
+function encodeSyntheticInstructionSource(source: InstructionSource): string {
+  return `${syntheticSourcePrefix}${JSON.stringify(source)}`;
+}
+
+export function decodeSyntheticInstructionSource(value: string): InstructionSource | undefined {
+  if (!value.startsWith(syntheticSourcePrefix)) return undefined;
+
+  try {
+    const parsed: unknown = JSON.parse(value.slice(syntheticSourcePrefix.length));
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      typeof (parsed as { path?: unknown }).path !== "string" ||
+      typeof (parsed as { kind?: unknown }).kind !== "string" ||
+      typeof (parsed as { scopePath?: unknown }).scopePath !== "string"
+    ) {
+      return undefined;
+    }
+    return parsed as InstructionSource;
+  } catch {
+    return undefined;
+  }
+}
+
+async function baselineConfig(cwd: string, baselineRef: string) {
+  const text = await readGitFile(cwd, baselineRef, "instructov.yml");
+  return text === undefined
+    ? parseInstructovConfigText("version: v0alpha1\n")
+    : parseInstructovConfigText(text);
+}
+
+async function baselineSources(cwd: string, baselineRef: string): Promise<InstructionSource[]> {
+  const config = await baselineConfig(cwd, baselineRef);
+  const files = await listGitFiles(cwd, baselineRef);
+  return files.flatMap((filePath) => {
+    const source = instructionSourceForPath(filePath, config.discovery);
+    return source === undefined ? [] : [source];
+  });
+}
+
+async function sourceMembershipChanges(
+  cwd: string,
+  baselineRef: string,
+): Promise<string[]> {
+  const [currentConfig, baseline] = await Promise.all([
+    loadinstructovConfig(cwd),
+    baselineSources(cwd, baselineRef),
+  ]);
+  const current = await discoverInstructionSources(cwd, currentConfig.discovery);
+  const currentPaths = sourcePaths(current);
+  const baselinePaths = sourcePaths(baseline);
+  const changes: string[] = [];
+
+  for (const source of [...baseline, ...current]) {
+    const sourcePath = toPosixPath(source.path);
+    if (currentPaths.has(sourcePath) === baselinePaths.has(sourcePath)) continue;
+    changes.push(encodeSyntheticInstructionSource(source));
+  }
+
+  return [...new Set(changes)].sort((left, right) => left.localeCompare(right, "en"));
+}
+
 export async function getInstructionDiffComparison(
   cwd: string,
   ref: string,
@@ -113,11 +190,13 @@ export async function getInstructionDiffComparison(
       ["diff", "--name-only", "--diff-filter=ACMRD", parsed.diffRef],
       cwd,
     );
+    const membershipChanges = await sourceMembershipChanges(cwd, baselineRef);
 
     return {
       comparedRef: parsed.comparedRef,
       baselineRef,
-      changedFiles: lines(changedFiles),
+      changedFiles: [...new Set([...lines(changedFiles), ...membershipChanges])]
+        .sort((left, right) => left.localeCompare(right, "en")),
     };
   } catch (err) {
     throw new GitDiffError(
