@@ -16,16 +16,19 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added this changelog to track user-facing CLI, documentation, and release changes.
 - Added release documentation for pre-1.0 versioning and release steps.
 - Added a pull request checklist item for changelog updates.
-- Added `instv` as the primary short CLI command while keeping `instructov` as a compatibility alias.
+- Added `instv` as the primary short CLI command.
 - Added repo-local `AGENTS.md` guidance for branch, PR, validation, cache, and safety expectations.
 - Added repository configuration files to default instruction-source discovery.
+
+### Removed
+
+- Removed the legacy `instructov` command alias. Use `instv`.
+- Removed legacy `agentctx` migration guidance and ignored-cache support.
 
 ### Fixed
 
 - Hardened local Git diff revision input and confined instruction discovery to the repository root.
-- Updated help and human CLI output to use `instv` as the primary identity while retaining `instructov` compatibility.
-- Clarified that legacy `agentctx.yml` is not loaded and must be renamed to `instructov.yml`.
-- Removed tracked legacy cache artifacts and ignored local cache directories.
+- Updated help and human CLI output to use `instv` as the primary identity.
 - Fixed `suggest` skill penalties so parsed section and command findings are included.
 - Fixed `doctor --diff` to include deleted conventional instruction sources in baseline comparison.
 - Made `.instructov` cache replacement atomic while retaining non-fatal cache failures.

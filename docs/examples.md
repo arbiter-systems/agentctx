@@ -76,5 +76,3 @@ instv doctor --verdict
 ```
 
 Verdicts are advisory and no-write. Apply any documentation or instruction changes manually, then rerun `doctor` or `doctor --diff dev` to review the result.
-
-`instructov` remains available as a compatibility command, but new examples use the primary `instv` command.
