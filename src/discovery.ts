@@ -43,9 +43,17 @@ const ignoredDirectoryNames = [
 ];
 
 const ignoredDirectories = ignoredDirectoryNames.map((directory) => `**/${directory}/**`);
+const optionsBySources = new WeakMap<InstructionSource[], DiscoveryOptions>();
 
 function toPosixPath(value: string): string {
   return value.split(path.sep).join("/");
+}
+
+function effectiveOptions(opts: DiscoveryOptions): Required<DiscoveryOptions> {
+  return {
+    include: [...(opts.include ?? defaultInclude)],
+    exclude: [...ignoredDirectories, ...(opts.exclude ?? [])],
+  };
 }
 
 function scopePathFor(filePath: string): string {
@@ -102,9 +110,9 @@ export function isDiscoveredInstructionPath(
   opts: DiscoveryOptions = {},
 ): boolean {
   const normalizedPath = toPosixPath(filePath);
-  const include = opts.include ?? defaultInclude;
-  const exclude = [...ignoredDirectories, ...(opts.exclude ?? [])];
-  return matchesInclude(normalizedPath, include) && !exclude.some((pattern) => matchesPattern(normalizedPath, pattern));
+  const options = effectiveOptions(opts);
+  return matchesInclude(normalizedPath, options.include) &&
+    !options.exclude.some((pattern) => matchesPattern(normalizedPath, pattern));
 }
 
 export function kindForInstructionPath(filePath: string): InstructionSourceKind | undefined {
@@ -129,6 +137,10 @@ export function instructionSourceForPath(
     kind: kindForInstructionPath(normalizedPath) ?? "agents",
     scopePath: scopePathFor(normalizedPath),
   };
+}
+
+export function discoveryOptionsForSources(sources: InstructionSource[]): DiscoveryOptions {
+  return optionsBySources.get(sources) ?? {};
 }
 
 export function isWithinRoot(root: string, candidate: string): boolean {
@@ -160,16 +172,15 @@ export async function discoverInstructionSources(
     throw err;
   }
 
-  const include = opts.include ?? defaultInclude;
-  const exclude = [...ignoredDirectories, ...(opts.exclude ?? [])];
+  const options = effectiveOptions(opts);
   let files: string[];
   try {
-    files = await fg(include, {
+    files = await fg(options.include, {
       cwd: root,
       onlyFiles: true,
       dot: true,
       followSymbolicLinks: false,
-      ignore: exclude,
+      ignore: options.exclude,
       unique: true,
     });
   } catch (err: unknown) {
@@ -183,12 +194,14 @@ export async function discoverInstructionSources(
   const safeFiles = await Promise.all(
     files.map(async (file) => ({ file, safe: await isSafeSource(root, file) })),
   );
-  return safeFiles
+  const sources = safeFiles
     .filter((entry) => entry.safe)
     .map((entry) => toPosixPath(entry.file))
     .sort((left, right) => left.localeCompare(right, "en"))
     .flatMap((file) => {
-      const source = instructionSourceForPath(file, opts);
+      const source = instructionSourceForPath(file, options);
       return source === undefined ? [] : [source];
     });
+  optionsBySources.set(sources, options);
+  return sources;
 }
