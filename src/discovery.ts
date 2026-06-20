@@ -50,26 +50,85 @@ function toPosixPath(value: string): string {
 
 function scopePathFor(filePath: string): string {
   if (filePath === ".github/copilot-instructions.md" || filePath === "instructov.yml") return ".";
-  const directory = path.dirname(filePath);
-  return directory === "." ? "." : toPosixPath(directory);
+  const directory = path.posix.dirname(filePath);
+  return directory === "." ? "." : directory;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+}
+
+function globToRegex(pattern: string): RegExp {
+  let expression = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    const next = pattern[index + 1];
+    if (char === "*" && next === "*") {
+      const slash = pattern[index + 2] === "/";
+      expression += slash ? "(?:.*/)?" : ".*";
+      index += slash ? 2 : 1;
+      continue;
+    }
+    if (char === "*") {
+      expression += "[^/]*";
+      continue;
+    }
+    if (char === "?") {
+      expression += "[^/]";
+      continue;
+    }
+    expression += escapeRegex(char);
+  }
+  return new RegExp(`${expression}$`);
+}
+
+function matchesPattern(filePath: string, pattern: string): boolean {
+  return globToRegex(pattern).test(filePath);
+}
+
+function matchesInclude(filePath: string, patterns: string[]): boolean {
+  let included = false;
+  for (const rawPattern of patterns) {
+    const excluded = rawPattern.startsWith("!");
+    const pattern = excluded ? rawPattern.slice(1) : rawPattern;
+    if (pattern.length === 0 || !matchesPattern(filePath, pattern)) continue;
+    included = !excluded;
+  }
+  return included;
+}
+
+export function isDiscoveredInstructionPath(
+  filePath: string,
+  opts: DiscoveryOptions = {},
+): boolean {
+  const normalizedPath = toPosixPath(filePath);
+  const include = opts.include ?? defaultInclude;
+  const exclude = [...ignoredDirectories, ...(opts.exclude ?? [])];
+  return matchesInclude(normalizedPath, include) && !exclude.some((pattern) => matchesPattern(normalizedPath, pattern));
 }
 
 export function kindForInstructionPath(filePath: string): InstructionSourceKind | undefined {
   if (filePath === ".github/copilot-instructions.md") return "copilot";
   if (filePath === "instructov.yml") return "config";
   if (filePath.endsWith("/SKILL.md") || filePath === "SKILL.md") return "skill";
-  if (filePath === "AGENTS.md") return "agents";
-  if (filePath === "CLAUDE.md") return "claude";
-  if (filePath === "GEMINI.md") return "gemini";
+  const basename = path.posix.basename(filePath);
+  if (basename === "AGENTS.md") return "agents";
+  if (basename === "CLAUDE.md") return "claude";
+  if (basename === "GEMINI.md") return "gemini";
   return undefined;
 }
 
-export function instructionSourceForPath(filePath: string): InstructionSource | undefined {
+export function instructionSourceForPath(
+  filePath: string,
+  opts: DiscoveryOptions = {},
+): InstructionSource | undefined {
   const normalizedPath = toPosixPath(filePath);
-  const kind = kindForInstructionPath(normalizedPath);
-  return kind === undefined
-    ? undefined
-    : { path: normalizedPath, kind, scopePath: scopePathFor(normalizedPath) };
+  if (!isDiscoveredInstructionPath(normalizedPath, opts)) return undefined;
+  return {
+    path: normalizedPath,
+    kind: kindForInstructionPath(normalizedPath) ?? "agents",
+    scopePath: scopePathFor(normalizedPath),
+  };
 }
 
 export function isWithinRoot(root: string, candidate: string): boolean {
@@ -128,9 +187,8 @@ export async function discoverInstructionSources(
     .filter((entry) => entry.safe)
     .map((entry) => toPosixPath(entry.file))
     .sort((left, right) => left.localeCompare(right, "en"))
-    .map((file) => instructionSourceForPath(file) ?? {
-      path: file,
-      kind: "agents" as const,
-      scopePath: scopePathFor(file),
+    .flatMap((file) => {
+      const source = instructionSourceForPath(file, opts);
+      return source === undefined ? [] : [source];
     });
 }
