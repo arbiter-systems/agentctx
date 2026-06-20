@@ -1,5 +1,7 @@
 {
   "name": "instructov-vscode",
+  "displayName": "Instructov",
+  "publisher": "arbiter-systems",
   "version": "0.1.0",
   "private": true,
   "type": "module",
