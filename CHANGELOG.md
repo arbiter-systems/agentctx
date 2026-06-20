@@ -50,7 +50,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added the `suggest` command with deterministic task classification, relevance-per-token scoring, compact prompt suggestions, route metadata, and estimated avoided context.
 - Added repo-local `instructov.yml` configuration support for discovery, doctor thresholds, fail-on behavior, suggest behavior, and display limits.
 - Added the `brief` command for compact task-specific briefing output.
--Added context budget reporting for `doctor` and `brief`.
+- Added context budget reporting for `doctor` and `brief`.
 - Added `doctor --changed` for changed-instruction-source analysis and CI-oriented exit behavior.
 - Added `doctor --diff <ref>` for comparing instruction impact against another git ref.
 - Added GitHub Actions CI validation for typecheck, tests, and build.
