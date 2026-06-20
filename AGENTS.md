@@ -22,7 +22,6 @@ Instructov is a local, deterministic CLI for auditing and streamlining AI coding
 ## Cache and generated artifacts
 
 - `.instructov/` is local runtime cache state and must not be committed.
-- `.agentctx/` is legacy local cache state and must not be committed.
 - Cache failures should stay non-fatal unless an issue explicitly changes that behavior.
 
 ## Validation
