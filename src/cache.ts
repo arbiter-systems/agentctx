@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const CACHE_VERSION = "0.1.0";
@@ -34,11 +34,20 @@ export async function saveCache(
   cwd: string,
   entries: Map<string, CacheEntry>,
 ): Promise<void> {
+  const cacheDirectory = path.join(cwd, CACHE_DIR);
+  const cachePath = path.join(cwd, CACHE_FILE);
+  const temporaryPath = path.join(
+    cacheDirectory,
+    `cache.${process.pid}.${Date.now()}.tmp`,
+  );
+
   try {
-    await mkdir(path.join(cwd, CACHE_DIR), { recursive: true });
+    await mkdir(cacheDirectory, { recursive: true });
     const data: CacheFile = { entries: Object.fromEntries(entries) };
-    await writeFile(path.join(cwd, CACHE_FILE), JSON.stringify(data, null, 2), "utf8");
+    await writeFile(temporaryPath, JSON.stringify(data, null, 2), "utf8");
+    await rename(temporaryPath, cachePath);
   } catch {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
     // non-fatal: cache write failures do not affect doctor output
   }
 }
