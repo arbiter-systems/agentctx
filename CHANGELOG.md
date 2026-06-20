@@ -18,6 +18,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added a pull request checklist item for changelog updates.
 - Added `instv` as the primary short CLI command while keeping `instructov` as a compatibility alias.
 - Added repo-local `AGENTS.md` guidance for branch, PR, validation, cache, and safety expectations.
+- Added repository configuration files to default instruction-source discovery.
 
 ### Fixed
 
@@ -26,6 +27,8 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Clarified that legacy `agentctx.yml` is not loaded and must be renamed to `instructov.yml`.
 - Removed tracked legacy cache artifacts and ignored local cache directories.
 - Fixed `suggest` skill penalties so parsed section and command findings are included.
+- Fixed `doctor --diff` to include deleted conventional instruction sources in baseline comparison.
+- Made `.instructov` cache replacement atomic while retaining non-fatal cache failures.
 
 ## [0.1.0] - 2026-06-17
 
@@ -44,7 +47,7 @@ This project uses a simple Keep-a-Changelog-style format. Instructov is pre-1.0,
 - Added the `suggest` command with deterministic task classification, relevance-per-token scoring, compact prompt suggestions, route metadata, and estimated avoided context.
 - Added repo-local `instructov.yml` configuration support for discovery, doctor thresholds, fail-on behavior, suggest behavior, and display limits.
 - Added the `brief` command for compact task-specific briefing output.
-- Added context budget reporting for `doctor` and `brief`.
+-Added context budget reporting for `doctor` and `brief`.
 - Added `doctor --changed` for changed-instruction-source analysis and CI-oriented exit behavior.
 - Added `doctor --diff <ref>` for comparing instruction impact against another git ref.
 - Added GitHub Actions CI validation for typecheck, tests, and build.
