@@ -56,10 +56,6 @@ Compare instruction impact before merging:
 instv doctor --diff dev
 ```
 
-## Command aliases
-
-`instv` is the primary short CLI command. `instructov` remains available as a compatibility alias.
-
 ## Configuration
 
 Repos can add an optional `instructov.yml`:
