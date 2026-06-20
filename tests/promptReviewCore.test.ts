@@ -10,6 +10,6 @@ describe("prompt review core", () => {
       "missing-objective",
       "missing-validation",
     ]);
-    expect(formatReviewText(report)).toContain("Must address:");
+    expect(formatReviewText(report)).toContain("Consider:");
   });
 });
