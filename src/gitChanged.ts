@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
+  discoveryOptionsForSources,
   instructionSourceForPath,
   type DiscoveryOptions,
   type InstructionSource,
@@ -58,10 +59,13 @@ export function filterToInstructionSources(
 ): string[] {
   const changedPaths = changedFiles.map(toPosixPath);
   const knownPaths = new Set(sources.map((source) => toPosixPath(source.path)));
+  const options = opts.include === undefined && opts.exclude === undefined
+    ? discoveryOptionsForSources(sources)
+    : opts;
 
   for (const filePath of changedPaths) {
     if (knownPaths.has(filePath)) continue;
-    const source = instructionSourceForPath(filePath, opts);
+    const source = instructionSourceForPath(filePath, options);
     if (source === undefined) continue;
     sources.push(source);
     knownPaths.add(filePath);
